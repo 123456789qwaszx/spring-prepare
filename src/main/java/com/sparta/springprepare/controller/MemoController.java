@@ -14,7 +14,17 @@ public class MemoController {
 
     @PostMapping
     public MemoResponseDto createMemo(@RequestBody MemoRequestDto requestDto) {
-        return null;
+        Memo memo = new Memo(requestDto);
+
+        Long maxId = memoList.isEmpty()
+                ? 1L
+                : Collections.max(memoList.keySet()) + 1;
+
+        memo.setId(maxId);
+
+        memoList.put(memo.getId(), memo);
+
+        return new MemoResponseDto(memo);
     }
 
     @GetMapping
