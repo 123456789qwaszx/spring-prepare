@@ -1,9 +1,6 @@
 package com.sparta.springprepare.controller;
 
-import org.springframework.web.bind.annotation.GetMapping;
-import org.springframework.web.bind.annotation.PathVariable;
-import org.springframework.web.bind.annotation.RequestParam;
-import org.springframework.web.bind.annotation.RestController;
+import org.springframework.web.bind.annotation.*;
 
 @RestController
 public class TestController {
@@ -18,5 +15,10 @@ public class TestController {
             @RequestParam(required = false, defaultValue = "0") int age
     ) {
         return name + "은 " + age + "살입니다.";
+    }
+
+    @PostMapping("/hello")
+    public String helloPost() {
+        return "POST 요청입니다.";
     }
 }
