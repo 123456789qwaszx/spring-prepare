@@ -29,7 +29,13 @@ public class MemoController {
 
     @GetMapping
     public List<MemoResponseDto> getMemos() {
-        return null;
+        List<MemoResponseDto> responseList = new ArrayList<>();
+
+        for(Memo memo : memoList.values()){
+            responseList.add(new MemoResponseDto(memo));
+        }
+
+        return responseList;
     }
 
     @PutMapping("/{id}")
