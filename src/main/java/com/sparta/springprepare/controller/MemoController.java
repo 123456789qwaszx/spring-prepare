@@ -31,7 +31,7 @@ public class MemoController {
     public List<MemoResponseDto> getMemos() {
         List<MemoResponseDto> responseList = new ArrayList<>();
 
-        for(Memo memo : memoList.values()){
+        for (Memo memo : memoList.values()) {
             responseList.add(new MemoResponseDto(memo));
         }
 
@@ -40,23 +40,30 @@ public class MemoController {
 
     @PutMapping("/{id}")
     public Long updateMemo(@PathVariable Long id, @RequestBody MemoRequestDto requestDto) {
+        // memoList에 해당 id가 있는지 확인, 있는 경우만 값 변경
+        if (memoList.containsKey(id)) {
+            Memo memo = memoList.get(id);
 
-        // TODO:
-        // - memoList에 해당 id가 있는지 확인
-        // - 있으면 값 변경
-        // - id 반환
+            memo.setUsername(requestDto.getUsername());
+            memo.setContents(requestDto.getContents());
 
-        return null;
+            // id 반환
+            return memo.getId();
+        } else {
+            throw new IllegalArgumentException("선택한 메모는 존재하지 않습니다.");
+        }
     }
 
     @DeleteMapping("/{id}")
     public Long deleteMemo(@PathVariable Long id) {
+        // memoList에 해당 id가 있는지 확인, 있는 경우만 memoList.remove(id)
+        if (memoList.containsKey(id)) {
+            memoList.remove(id);
 
-        // TODO:
-        // - memoList에 해당 id가 있는지 확인
-        // - memoList.remove(id)
-        // - id 반환
-
-        return null;
+            // - id 반환
+            return id;
+        } else {
+            throw new IllegalArgumentException("선택한 메모는 존재하지 않습니다.");
+        }
     }
 }
