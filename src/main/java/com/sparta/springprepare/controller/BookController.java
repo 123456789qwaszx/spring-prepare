@@ -17,17 +17,29 @@ public class BookController {
     public BookResponseDto createBook(@RequestBody BookRequestDto requestDto) {
         Book book = new Book(requestDto);
 
-        // TODO 1: id 정하기
-        //   if(bookList >=0) 1, else(키 중 최댓값 + 1)
+        // id 정하기
+        Long maxId = bookList.isEmpty()
+                ? 1L
+                : Collections.max(bookList.keySet()) + 1;
 
-        // TODO 2: book에 id 기입, bookList에 저장
+        // book에 id 기입
+        book.setId(maxId);
+
+        // bookList에 저장
+        bookList.put(book.getId(), book);
 
         return new BookResponseDto(book);
     }
 
     @GetMapping
     public List<BookResponseDto> getBooks() {
-        // TODO 3: bookList의 Book들을 BookResponseDto 리스트로 바꿔서 반환
-        return null;
+        List<BookResponseDto> responseList = new ArrayList<>();
+
+        // bookList의 Book들을 BookResponseDto 리스트로 반환
+        for (Book book : bookList.values()) {
+            responseList.add(new BookResponseDto(book));
+        }
+
+        return responseList;
     }
 }
