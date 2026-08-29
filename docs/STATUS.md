@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-08-29 — **M2 작성됨** (실행 검증 대기). M1 검증됨.
+> 마지막 갱신: 2026-08-29 — **M2 검증됨.** M0~M9 3차 점검 완료.
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -9,7 +9,7 @@
 |---|---|---|---|---|---|
 | M0 | 접속 확인 | **검증됨** (08-29) | [plans/M0.md](plans/M0.md) | [M0-check.md](M0-check.md) | 커밋 완료. 확인된 사실 F1~F8 |
 | M1 | 콘텐츠 수입·배포 | **검증됨** (08-29) | [plans/M1.md](plans/M1.md) | [M1-check.md](M1-check.md) | 커밋 완료. 확인된 사실 F9~F15 |
-| M2 | 회차·세이브 업로드/복구 | **작성됨** (08-29) | [plans/M2.md](plans/M2.md) | [M2-check.md](M2-check.md) | D-008: 서버는 슬롯 번호 범위만 보장. 실행 검증 대기 |
+| M2 | 회차·세이브 업로드/복구 | **검증됨** (08-29) | [plans/M2.md](plans/M2.md) | [M2-check.md](M2-check.md) | 커밋만 남음. D-008. 확인된 사실 F16~F22 |
 | M3 | 선택 이력·이벤트 로그 | 대기 | [plans/M3.md](plans/M3.md) | — | 착수 시 시간대 결정(D-009). 배치 도구는 M1에서 검증됨 |
 | M4 | 멱등성과 충돌 | 대기 | [plans/M4.md](plans/M4.md) | — | 핵심 학습. 착수 시 PLAN#3 결정 |
 | M5 | 조회와 집계 | 대기 | [plans/M5.md](plans/M5.md) | — | 인덱스 마이그레이션은 V3 (V2는 M1이 씀) |
@@ -20,18 +20,56 @@
 
 ## 지금
 
-- 위치: **M2 작성 완료, 실행 검증 대기.** M0·M1은 검증·커밋 완료.
-- Claude가 반영한 것 (M2): `playthrough/` 7개, `save/` 8개, `user/UserRepository.existsById`, 테스트 3개(`PlaythroughApiTest` 6 · `SaveSlotApiTest` 11 · `support/Fixtures`), `DbCleaner` 9테이블 확장, `M2-check.md`. **스키마 변경 없음** — 마이그레이션 단계가 없다.
-- 아미야가 할 일: `docs/M2-check.md` §0(선행 조건 확인) → §1(테스트 17건, 전체 47건) → §2 bootRun → §3 시나리오 → §6 기록 → 커밋.
+- 위치: **M2 종료.** 완료 기준 12개 + 자동 테스트 **48건** 통과 (M2-check.md §6).
+- 남은 일: 아미야가 M2 커밋 (문서 갱신 포함).
+- 그다음: M3 착수 전 결정 두 가지 (아래).
 
 ## 다음 M을 시작하기 전에 필요한 것 (M3)
 
 | # | 항목 | 누가 |
 |---|---|---|
-| 1 | **D-009 결정**: 시간대. 클라가 보내는 `chosenAt`(ISO-8601 UTC)을 `DATETIME`에 어떻게 넣을지. 지금 DB는 KST를 담고 있다(M0 F8) | 아미야 (M3 착수 시) |
-| 2 | `EventKey`가 비어 있지 않은 챕터 샘플 — `qwer.progression.json`은 전부 빈 문자열이라 이벤트 로그를 테스트할 수 없다. 변형 파일을 만들지, VnTool에서 실물을 내보낼지 | 아미야 |
+| 1 | **D-009 결정 — 시간대.** 클라가 보내는 `chosenAt`(ISO-8601 UTC)을 `DATETIME`에 어떻게 넣을지. **지금 DB는 KST를 담고 있다**(M0 F8). 권장: DB `time_zone` 과 URL `serverTimezone` 을 UTC 로 고정하고 앱은 `Instant`/`OffsetDateTime` 을 쓴다 — 다만 이미 들어간 `created_at`·`updated_at` 의 해석이 바뀌므로 지금 정하는 게 낫다 | 아미야 |
+| 2 | **`EventKey` 가 비어 있지 않은 챕터 샘플.** `qwer.progression.json` 은 8개 노드 전부 `EventKey: ""` 라 `event_log` 를 테스트할 수 없다. (a) 변형 파일을 `src/test/resources/content/` 에 하나 만들지, (b) VnTool 에서 EventKey 를 채워 다시 내보낼지 | 아미야 |
 
 ## 점검 이력
+
+### 2026-08-29 — M2 종료 후 M0~M9 3차 점검
+
+M2에서 확인된 사실(M2.md §7-1 F16~F22)을 뒤 M의 전제와 대조했다. **계획의 구조를 바꿀 어긋남은 없었다.** 다만 이번에는 **검증 절차 자체의 결함**이 둘 드러났고, 그것이 M3 이후 모든 M에 영향을 준다.
+
+**절차의 결함 ① — `gradlew test` 가 조용히 아무것도 안 돌린다 (F21)**
+
+```
+5 actionable tasks: 5 up-to-date            ← 0건 실행. 그런데 BUILD SUCCESSFUL
+6 actionable tasks: 2 executed, 4 up-to-date ← cleanTest 를 붙여야 실제로 돈다
+```
+
+"빌드가 성공했다"와 "테스트가 통과했다"는 다른 말인데, 화면은 둘 다 초록이다. **가짜 초록**이며 CI 가 아무것도 지키지 않는 상태가 이렇게 만들어진다.
+→ `docs/README.md` 운영 규칙 8번으로 승격: 테스트는 항상 `cleanTest test`, 색깔이 아니라 **작업 요약 줄과 테스트 이름 출력**을 읽는다.
+
+**절차의 결함 ② — 안내가 흩어지면 사람이 단계를 건너뛴다**
+
+`$PT` 대입을 별도 블록으로 떼어 놓은 탓에 건너뛰어 전 요청이 404 가 났고, PowerShell 창을 새로 열자 `$SNAP`·`$USER_ID` 가 죽어 깨진 JSON 이 나갔다. 둘 다 서버 문제가 아니라 **절차 문서의 문제**였다.
+→ `M2-check.md` 의 설정을 한 블록으로 묶고 확인 출력을 붙였다. M3 이후 check 문서도 같은 형태로 쓴다.
+
+**뒤 M 의 전제를 굳혀 준 것**
+
+- **F18/F19 → M4**: `ON DUPLICATE KEY UPDATE` 가 AUTO_INCREMENT 를 소비하고(`devices` id 1, 3), UPDATE 절이 실제로 동작한다(`last_seen_at` 갱신). M4 에서 upsert 를 조건부 UPDATE(`WHERE revision = :base`)로 가르면 이 소비가 사라진다 — 갈라야 할 이유가 하나 더 생겼다.
+- **F16 → M3·M4**: `@JsonRawValue` 가 record 에서 동작하므로 스냅샷 응답 형식을 바꿀 필요가 없다.
+- **F20 → M6**: 깨진 JSON 이 `GlobalExceptionHandler` 를 우회한다는 것을 **실제로 목격**했다. M6-8 의 첫 항목으로 이미 올렸다.
+
+| 문서 | 반영 |
+|---|---|
+| plans/M2.md | 작업 표·완료 기준 `검증됨`, §7-1 "확인된 사실 F16~F22" 신설, 선행 조건 해소 표시 |
+| plans/M4.md | F18·F19 를 §2 선행 조건에 추가 — 조건부 UPDATE 로 갈라야 할 근거 |
+| README.md | 운영 규칙 8(`cleanTest`)·9(선행 조건 확인 쿼리) 추가 |
+| DECISIONS.md | D-008 사후 결과 확인 |
+| M2-check.md | §6 결과표, 테스트 개수 정정(17→18, 47→48), `cleanTest` 경고, safe update mode 대응 |
+
+바꾸지 않은 것과 이유:
+
+- **M3·M5·M7·M8·M9**: M2가 건드리지 않은 영역. M3 는 배치 도구(M1 F10)와 DTO 확장 지점이 이미 준비돼 있어 계획 그대로다.
+- **PLAN.md**: 정본은 그대로. M2 도 계획대로 끝났다. 단 M2 완료 기준의 "슬롯 4 → 400" 은 D-008 이 대체했다 — PLAN 을 고치지 않고 결정 기록이 해석을 담당하는 방식을 유지한다.
 
 ### 2026-08-29 — M1 종료 후 M0~M9 2차 점검
 
@@ -78,3 +116,4 @@ M0에서 확인된 사실(M0.md §7-1 F1~F8)을 뒤 M의 전제와 대조. 구�
 - 2026-08-29: M1 착수. 결정 D-006·D-007. 구현 전 Jackson 3 / Spring 7 API를 소스로 대조 — `asText()`·`textValue()`가 deprecated(→ `asString()`·`stringValue()`), `JacksonException`이 unchecked, `StringHttpMessageConverter` 기본 charset이 ISO-8859-1이나 `application/json`에는 UTF-8 예외 규칙.
 - 2026-08-29: M1 실행 검증 통과(테스트 23건, 수동 시나리오 전부). `game` 스키마 드리프트 복구. M0~M9 2차 점검. 커밋.
 - 2026-08-29: M2 착수. 결정 **D-008** — 슬롯 개수 상한은 클라이언트 정책, 서버는 번호의 유효 범위(1..127)만 보장. PLAN 권장(3개 제한)과 다른 결론이라 완료 기준 "슬롯 4 → 400"을 두 기준으로 대체했다. 구현 전 `@JsonRawValue`가 Jackson 3에서도 읽히는지 소스로 확인.
+- 2026-08-29: M2 실행 검증 통과(테스트 48건, 수동 시나리오 전부). 검증 절차의 결함 둘 발견(`gradlew test` 의 가짜 초록, 흩어진 안내) → 운영 규칙으로 승격. M0~M9 3차 점검.
