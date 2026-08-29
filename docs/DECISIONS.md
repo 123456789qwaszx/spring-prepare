@@ -50,6 +50,7 @@
 - 결정: **2.** 얇더라도 Service를 둔다. 에러 응답은 `ErrorResponse(code, message, detail)` record를 지금 만들고, M6에서는 **누락 케이스를 채우는 일**만 남긴다.
 - 판단 근거: 규약은 첫 코드에서 세워야 지켜진다. M1부터 트랜잭션이 Service에 붙는데 M0만 다른 모양이면 "M0는 예외"라는 습관이 생긴다. 반면 M0의 "하지 않는 것"(로그인·해시·토큰)은 그대로 하지 않는다 — 이것은 범위 확장이 아니라 **형태 통일**이다.
 - 결과: `common/ErrorResponse`, `common/NotFoundException`, `common/BadRequestException`, `common/GlobalExceptionHandler`. `DataIntegrityViolationException`(NOT NULL·길이·FK 위반) → 400, 그 하위인 `DuplicateKeyException` → 409. 핸들러 선택은 예외 계층상 가장 가까운 것이 이긴다.
+- **2026-08-29 (M4) 갱신 — `detail` 을 넓히지 않기로 했다.** M4 의 409 는 서버 슬롯 상태(**객체**)를 실어야 하는데 `ErrorResponse.detail` 은 `String` 이다. 선택지는 (a) `detail` 을 `Object` 로 넓힌다 (b) `ConflictResponse` 를 따로 둔다. **(b)** 를 골랐다 — 한 곳의 필요 때문에 **나머지 모든 에러 응답의 계약을 느슨하게 만들지 않는다.** 대가는 에러 형식이 둘이 된다는 것이고 M6 에서 통일한다. `code`·`message` 는 같은 이름으로 맞춰 두어 클라의 분기 방식은 바뀌지 않는다.
 
 ## D-005. M0 입력 검증은 수동 `if`로, Validation 스타터는 넣지 않는다
 
@@ -192,6 +193,12 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
 |---|---|
 | D-006 | **맞았다.** 5,686 → 3,581 바이트(37% 감소)로 바이트 동일은 깨졌지만, 파싱 후 트리 비교는 완전히 일치했고 한글도 살았다. 그리고 `JSON_EXTRACT`로 `ChoiceLabel`을 바로 뽑을 수 있다 — `LONGTEXT`였다면 매번 `CAST(body AS JSON)`이 필요했다. **줄어든 3,581은 완전 압축(3,240)이 아니다**: MySQL은 `", "` / `": "` 형식으로 출력하므로 사라진 것은 들여쓰기·줄바꿈뿐이다 |
 | D-007 | **맞았다.** definition 재수입이 200으로 판정됐다 — checksum 컬럼이 없었다면 불가능했다. 그리고 이 마이그레이션을 두 DB에 손으로 적용하는 과정에서 R4(스키마 드리프트)가 드러나, 결과적으로 M6 Flyway의 근거를 하나 더 만들었다 |
+
+### 2026-08-29, M4 종료 시점
+
+| # | 결과 |
+|---|---|
+| D-010 | **맞았다. 그리고 구현이 결정보다 단순해졌다.** "판정 불가면 409" 는 코드에 **별도 분기를 만들지 않는다** — `choices` 가 비면 재전송 판정을 건너뛰고 조건부 UPDATE 로 넘어가는데, base 가 낡았으면 0행이 되어 자연히 409 가 난다. 반대로 PLAN 원문(200)을 구현하려면 `if (choices.isEmpty()) return 200` 이라는 **예외 분기를 넣어야** 했다. 실행 검증 §4.7 에서 확인: 낡은 base + `choices` 없음 → 409, base 를 고치면 200. **더 안전한 쪽이 더 단순하기도 한 경우**였다 — 늘 그렇지는 않으므로 기록해 둔다.<br>부수적으로 재검토 방아쇠가 하나 늘었다(F33): force 뒤의 이력은 두 기기가 섞이고, seq 가 겹치면 먼저 쓴 쪽이 남는다. 기기별 UUID 로 바꿀 근거가 "빈 choices" 하나에서 둘이 됐다. |
 
 ### 2026-08-29, M3 종료 시점
 
