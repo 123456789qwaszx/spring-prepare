@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-08-29 — **M2 검증됨.** M0~M9 3차 점검 완료.
+> 마지막 갱신: 2026-08-29 — **M3 작성됨** (실행 검증 대기). M2까지 검증·커밋 완료.
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -9,8 +9,8 @@
 |---|---|---|---|---|---|
 | M0 | 접속 확인 | **검증됨** (08-29) | [plans/M0.md](plans/M0.md) | [M0-check.md](M0-check.md) | 커밋 완료. 확인된 사실 F1~F8 |
 | M1 | 콘텐츠 수입·배포 | **검증됨** (08-29) | [plans/M1.md](plans/M1.md) | [M1-check.md](M1-check.md) | 커밋 완료. 확인된 사실 F9~F15 |
-| M2 | 회차·세이브 업로드/복구 | **검증됨** (08-29) | [plans/M2.md](plans/M2.md) | [M2-check.md](M2-check.md) | 커밋만 남음. D-008. 확인된 사실 F16~F22 |
-| M3 | 선택 이력·이벤트 로그 | 대기 | [plans/M3.md](plans/M3.md) | — | 착수 시 시간대 결정(D-009). 배치 도구는 M1에서 검증됨 |
+| M2 | 회차·세이브 업로드/복구 | **검증됨** (08-29) | [plans/M2.md](plans/M2.md) | [M2-check.md](M2-check.md) | 커밋 완료. D-008. 확인된 사실 F16~F22 |
+| M3 | 선택 이력·이벤트 로그 | **작성됨** (08-29) | [plans/M3.md](plans/M3.md) | [M3-check.md](M3-check.md) | D-009(UTC). 실행 검증 대기. 확인된 사실 F23~F26(문서 근거) |
 | M4 | 멱등성과 충돌 | 대기 | [plans/M4.md](plans/M4.md) | — | 핵심 학습. 착수 시 PLAN#3 결정 |
 | M5 | 조회와 집계 | 대기 | [plans/M5.md](plans/M5.md) | — | 인덱스 마이그레이션은 V3 (V2는 M1이 씀) |
 | M6 | 마감 | 대기 | [plans/M6.md](plans/M6.md) | — | PLAN#4, #5. Flyway 근거가 M1에서 크게 늘었다 |
@@ -20,16 +20,22 @@
 
 ## 지금
 
-- 위치: **M2 종료.** 완료 기준 12개 + 자동 테스트 **48건** 통과 (M2-check.md §6).
-- 남은 일: 아미야가 M2 커밋 (문서 갱신 포함).
-- 그다음: M3 착수 전 결정 두 가지 (아래).
+- 위치: **M3 구현 완료, 실행 검증 대기.** 새 파일 13개 + 기존 14개 수정, 컴파일 오류 0 (스텁 대조).
+- **아미야가 먼저 해야 할 일이 있다** — 이번 M은 코드만으로 끝나지 않는다:
+  1. `application-local.properties` / `application-test.properties` 의 접속 URL 교체 (gitignore이라 이쪽에서 못 고친다)
+  2. `game` · `game_test` 의 기존 KST 데이터 폐기
+  3. `docs/M3-check.md` §2부터 순서대로
+- 그다음: 실행 검증 → 문서 갱신 → 커밋 `M3: 선택 이력·이벤트 로그` → **M0~M9 4차 점검**.
 
-## 다음 M을 시작하기 전에 필요한 것 (M3)
+## M3에서 아미야가 직접 해야 하는 것
 
-| # | 항목 | 누가 |
+| # | 항목 | 왜 이쪽에서 못 하나 |
 |---|---|---|
-| 1 | **D-009 결정 — 시간대.** 클라가 보내는 `chosenAt`(ISO-8601 UTC)을 `DATETIME`에 어떻게 넣을지. **지금 DB는 KST를 담고 있다**(M0 F8). 권장: DB `time_zone` 과 URL `serverTimezone` 을 UTC 로 고정하고 앱은 `Instant`/`OffsetDateTime` 을 쓴다 — 다만 이미 들어간 `created_at`·`updated_at` 의 해석이 바뀌므로 지금 정하는 게 낫다 | 아미야 |
-| 2 | **`EventKey` 가 비어 있지 않은 챕터 샘플.** `qwer.progression.json` 은 8개 노드 전부 `EventKey: ""` 라 `event_log` 를 테스트할 수 없다. (a) 변형 파일을 `src/test/resources/content/` 에 하나 만들지, (b) VnTool 에서 EventKey 를 채워 다시 내보낼지 | 아미야 |
+| 1 | 접속 URL을 `connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true` 로 교체 (두 파일) | `.gitignore` 대상이라 파일을 만들지도 읽지도 않는다 (D-002·D-003) |
+| 2 | `game` · `game_test` 데이터 폐기 | DB에 직접 접속할 수 없다. 절차는 M3-check §1 |
+
+> **해소된 것**: 이전 표의 2번 "EventKey가 채워진 챕터 샘플" 은 `src/test/resources/content/qwer-events.progression.json` 추가로 끝났다.
+> 아미야의 지시대로 `qwer.progression.json` 은 손대지 않았다.
 
 ## 점검 이력
 
@@ -116,4 +122,5 @@ M0에서 확인된 사실(M0.md §7-1 F1~F8)을 뒤 M의 전제와 대조. 구�
 - 2026-08-29: M1 착수. 결정 D-006·D-007. 구현 전 Jackson 3 / Spring 7 API를 소스로 대조 — `asText()`·`textValue()`가 deprecated(→ `asString()`·`stringValue()`), `JacksonException`이 unchecked, `StringHttpMessageConverter` 기본 charset이 ISO-8859-1이나 `application/json`에는 UTF-8 예외 규칙.
 - 2026-08-29: M1 실행 검증 통과(테스트 23건, 수동 시나리오 전부). `game` 스키마 드리프트 복구. M0~M9 2차 점검. 커밋.
 - 2026-08-29: M2 착수. 결정 **D-008** — 슬롯 개수 상한은 클라이언트 정책, 서버는 번호의 유효 범위(1..127)만 보장. PLAN 권장(3개 제한)과 다른 결론이라 완료 기준 "슬롯 4 → 400"을 두 기준으로 대체했다. 구현 전 `@JsonRawValue`가 Jackson 3에서도 읽히는지 소스로 확인.
-- 2026-08-29: M2 실행 검증 통과(테스트 48건, 수동 시나리오 전부). 검증 절차의 결함 둘 발견(`gradlew test` 의 가짜 초록, 흩어진 안내) → 운영 규칙으로 승격. M0~M9 3차 점검.
+- 2026-08-29: M2 실행 검증 통과(테스트 48건, 수동 시나리오 전부). 검증 절차의 결함 둘 발견(`gradlew test` 의 가짜 초록, 흩어진 안내) → 운영 규칙으로 승격. M0~M9 3차 점검. 커밋.
+- 2026-08-29: M3 착수. 결정 **D-009** — 영속 시각은 전부 UTC, 지역 시간은 표시 시점에만. 구현 전 Connector/J 9.7.0 문서를 대조해 **읽기·쓰기 비대칭**(F23)과 `forceConnectionTimeZoneToSession` 기본값 `false`(F24)를 확인 — 이 둘을 모르면 M2까지의 URL이 세션 시간대를 설정한 적조차 없다는 사실을 놓친다. M0~M2의 record 8개를 `OffsetDateTime` 으로 소급 변경. 테스트 13건 추가(총 61건).

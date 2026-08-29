@@ -100,6 +100,39 @@
     - 슬롯 `1, 5, 42, 127`을 모두 만들 수 있다 (상한 없음의 증명)
   - 127이 부족해지면 `slot_no`를 `SMALLINT`로 넓히는 한 줄 마이그레이션이면 된다 — 넓히는 방향이라 기존 데이터에 무해하다. 지금은 넓히지 않고 기록만 한다.
 
+## D-009. 영속 시각은 UTC로 통일한다 (ANALYSIS §3.8, M3)
+
+- 상태: **결정됨** (2026-08-29, 아미야)
+- 배경: M0에서 `created_at`이 KST로 정확히 기록된 것을 확인했다(F8). 즉 지금 DB의 `DATETIME`은 **KST 벽시계를 담고 있었다.** M3에서 클라가 `chosenAt`을 직접 보내기 시작하면서 이 전제가 처음으로 흔들린다 — 오프라인 플레이 시각은 기기의 시간대로 찍히고, 여러 기기가 붙으면 시간대가 여러 개가 된다.
+- 아미야의 결정과 근거(원문): *"DB에 저장되는 모든 절대 시각은 UTC로 해석한다. 클라이언트가 전달하는 시각은 ISO-8601 UTC(Z) 형식을 사용한다. 지역 시간(KST 등)은 표시 시점에만 변환한다. 기존 개발용 KST 데이터는 폐기하고 UTC 기준으로 재생성한다."*
+- 선택지: (1) KST 유지 (2) **전부 UTC, 표시할 때만 변환** (3) 컬럼을 `TIMESTAMP`로 바꿔 드라이버에 맡김.
+- 결정: **2.**
+- 판단 근거:
+  - **저장은 순간(instant)이고, 시간대는 표현이다.** 표현을 저장하면 나중에 순간을 복원할 수 없다 — `2026-08-29 20:40:19`만 남으면 그게 어디의 20시인지 아무도 모른다.
+  - 3(=`TIMESTAMP`)이 더 "정석"으로 보이지만 스키마 전체를 바꿔야 하고, `TIMESTAMP`는 2038년 상한이 있으며, **드라이버가 세션 시간대에 따라 조용히 변환**한다. 눈에 안 보이는 변환은 학습에도 운영에도 나쁘다. `DATETIME` + "여기 든 것은 UTC다"라는 한 줄 규칙이 더 명시적이다.
+  - 서버는 클라의 시간대를 알 필요가 없다. KST 표시는 화면의 일이다 — PLAN 1.4의 선긋기와 같다.
+- 결과:
+  - **접속 URL이 바뀐다** (`application-local.properties`, `application-test.properties` — 둘 다 gitignore이므로 아미야가 직접 고친다):
+    `...?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true`
+    - `serverTimezone`은 `connectionTimeZone`의 옛 이름(별칭)이다. 새 이름으로 쓴다.
+    - `forceConnectionTimeZoneToSession`의 **기본값은 `false`**다. 이것을 켜지 않으면 세션 `time_zone`이 서버 기본(KST)으로 남아, DB DEFAULT `CURRENT_TIMESTAMP`가 채우는 `created_at`은 KST로, 앱이 넣는 `chosen_at`은 UTC로 들어가 **한 테이블 안에서 시간대가 갈린다.**
+  - **경계 변환 지점을 코드로 만든다**: `common/UtcTime.toDbValue(OffsetDateTime)`. Connector/J의 읽기·쓰기 비대칭 때문에 필요하다 (§아래).
+  - 앱이 다루는 타입: **읽기 `OffsetDateTime`, 쓰기 `LocalDateTime`(UTC 벽시계)**. 응답 JSON은 `2026-08-29T11:40:19Z`로 나간다 — 클라가 시간대를 짐작할 자리가 없다.
+  - **기존 개발용 데이터는 폐기한다.** `game`의 KST 시각과 새 UTC 시각이 섞이면 어느 행이 어느 규칙인지 알 수 없다. M3-check.md의 1단계가 이 정리다.
+  - 이 결정은 M0~M2의 8개 record를 `LocalDateTime` → `OffsetDateTime`으로 바꾸게 했다: `User`, `ChapterContent`, `ChapterVersionInfo`, `Playthrough`, `PlaythroughSummary`, `PlaythroughEndResponse`, `SaveSlotSummary`, `SaveSlotDetail`.
+
+### 왜 코드에 변환 지점이 필요한가 (Connector/J의 비대칭)
+
+Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
+
+| 방향 | 대상/원본 | 변환 여부 |
+|---|---|---|
+| **쓰기** | 대상이 `DATETIME` | **하지 않는다.** `OffsetDateTime`을 넘겨도 벽시계 부분만 저장된다 |
+| **쓰기** | 대상이 `TIMESTAMP` | 한다 |
+| **읽기** | 원본이 `DATETIME` → `OffsetDateTime` 등 순간 타입 | **한다.** 연결 시간대로 해석 |
+
+즉 `2026-08-29T20:40:19+09:00`을 그대로 넘기면 **20:40:19이 저장**되고, 그것을 UTC로 읽으면 9시간 어긋난다. 그래서 쓰기 직전에 우리가 UTC로 정규화한다(`UtcTime.toDbValue`). 읽기는 드라이버에 맡기되, **드라이버에 맡긴다는 것은 URL이 바뀌면 조용히 틀린다는 뜻**이므로 `SaveHistoryApiTest`가 `+09:00`을 보내 DB의 벽시계 문자열까지 직접 확인한다.
+
 ---
 
 ## 열린 결정 (PLAN §5에서 아직 안 정한 것)
@@ -112,6 +145,7 @@
 | 4 | `event_log` UNIQUE 범위 | (a) 회차 내 1회 | M6 | 미결 |
 | 5 | Flyway | M6 도입 | M6 | 미결 |
 | 6 | Testcontainers | — | M0 | **D-002로 해소** |
+| — | 영속 시각의 시간대 (PLAN에 없던 항목, ANALYSIS §3.8에서 제기) | UTC | M3 착수 | **D-009로 해소** |
 
 ---
 

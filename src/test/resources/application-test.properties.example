@@ -1,6 +1,13 @@
 # 통합 테스트용 프로필 (D-002). 이 파일을 복사해 application-test.properties 로 만들고 값을 채운다.
 # application-test.properties 는 .gitignore 되어 있다. 테스트는 @ActiveProfiles("test") 로 이 프로필을 쓴다.
 # 주의: url 이 반드시 game_test 를 가리켜야 한다. game 을 가리키면 테스트가 개발 데이터를 지운다.
-spring.datasource.url=jdbc:mysql://localhost:3306/game_test?serverTimezone=Asia/Seoul
+#
+# 시간대 (D-009, M3): DB 의 모든 절대 시각은 UTC 다.
+#   connectionTimeZone=UTC            DATETIME 을 OffsetDateTime 으로 읽을 때 UTC 로 해석한다.
+#   forceConnectionTimeZoneToSession  세션의 time_zone 도 UTC 로 맞춘다. **기본값이 false 라서 반드시 켜야 한다** —
+#                                     끄면 DB DEFAULT CURRENT_TIMESTAMP(= created_at 등)가 MySQL 서버의
+#                                     시간대(보통 KST)로 기록되어, 앱이 넣는 UTC 값과 한 테이블 안에서 갈린다.
+# serverTimezone 은 connectionTimeZone 의 옛 이름(별칭)이다. 새 이름으로 쓴다.
+spring.datasource.url=jdbc:mysql://localhost:3306/game_test?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
 spring.datasource.username=root
 spring.datasource.password=CHANGE_ME

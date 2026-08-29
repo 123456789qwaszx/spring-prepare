@@ -1,6 +1,6 @@
 package com.sparta.springprepare.save;
 
-import java.time.LocalDateTime;
+import java.time.OffsetDateTime;
 
 /**
  * GET /playthroughs/{pid}/saves 의 한 줄. **스냅샷이 없다.**
@@ -18,6 +18,6 @@ public record SaveSlotSummary(
         String currentEpisodeId,
         Long revision,
         Integer playSeconds,
-        LocalDateTime updatedAt,
+        OffsetDateTime updatedAt,
         String device) {
 }

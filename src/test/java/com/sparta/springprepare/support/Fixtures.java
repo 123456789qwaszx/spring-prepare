@@ -52,4 +52,27 @@ public final class Fixtures {
                 .update(keyHolder);
         return keyHolder.getKey().longValue();
     }
+
+    /**
+     * chapter_episodes 한 행 (M3). 색인은 원래 수입 시점에 생기지만,
+     * M3 의 테스트가 확인하려는 것은 수입이 아니라 **이력 기록**이다.
+     *
+     * <p>eventKey 를 빈 문자열로 넣는 것과 값으로 넣는 것이 곧 두 갈래의 테스트다 —
+     * 빈 것에 이벤트를 걸면 400, 값이 있으면 그 값이 event_log 에 그대로 들어간다.
+     * (수입 → 색인 → 이벤트 전 구간은 별도로 `qwer-events.progression.json` 을 API 로 올려 확인한다.)
+     *
+     * <p>키가 (chapter_content_id, episode_id) 복합 PK 라 생성 키가 없다 — 반환값도 없다.
+     */
+    public static void insertEpisode(JdbcClient jdbc, long chapterContentId,
+                                     String episodeId, String eventKey) {
+        jdbc.sql("""
+                        INSERT INTO chapter_episodes
+                            (chapter_content_id, episode_id, title, event_key, option_count)
+                        VALUES (:contentId, :episodeId, :episodeId, :eventKey, 0)
+                        """)
+                .param("contentId", chapterContentId)
+                .param("episodeId", episodeId)
+                .param("eventKey", eventKey)
+                .update();
+    }
 }

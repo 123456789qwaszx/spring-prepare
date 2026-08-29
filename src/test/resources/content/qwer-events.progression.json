@@ -1,0 +1,242 @@
+{
+  "ChapterId": "qwer-events",
+  "DisplayName": "이벤트 테스트 챕터",
+  "StartEpisodeId": "EP01",
+  "Stats": [
+    {
+      "Key": "int",
+      "DisplayName": "성실성",
+      "Type": "Number",
+      "Initial": 0,
+      "Minimum": 0,
+      "Maximum": 5
+    },
+    {
+      "Key": "power",
+      "DisplayName": "요령있음",
+      "Type": "Number",
+      "Initial": 0,
+      "Minimum": 0,
+      "Maximum": 5
+    }
+  ],
+  "Nodes": [
+    {
+      "EpisodeId": "EP01",
+      "Title": "출발",
+      "IndexText": "",
+      "DialogueEntryId": "EP01",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "EP02_01",
+          "ChoiceLabel": "선택지 골라.",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": [
+            {
+              "Key": "int",
+              "Amount": 5,
+              "Op": "Add"
+            }
+          ]
+        },
+        {
+          "TargetEpisodeId": "EP02_03",
+          "ChoiceLabel": "그냥길",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        },
+        {
+          "TargetEpisodeId": "EP02_02",
+          "ChoiceLabel": "선택지1",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "FALSE",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 0,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "EP02_01",
+      "Title": "성실한 길",
+      "IndexText": "",
+      "DialogueEntryId": "EP02_01",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "EP03_01",
+          "ChoiceLabel": "선택지1",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 220,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "EP03_01",
+      "Title": "중간 지점",
+      "IndexText": "",
+      "DialogueEntryId": "EP03_01",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [],
+      "EventKey": "MILESTONE_MIDPOINT",
+      "DesignerNote": "",
+      "Position": {
+        "X": 440,
+        "Y": 0
+      }
+    },
+    {
+      "EpisodeId": "EP03_02",
+      "Title": "갈림길",
+      "IndexText": "",
+      "DialogueEntryId": "EP03_02",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "EP04_01",
+          "ChoiceLabel": "농땡이 피움",
+          "VisibleConditions": [],
+          "Conditions": [
+            {
+              "Kind": "Stat",
+              "Key": "power",
+              "Op": "GreaterThan",
+              "IntValue": 2
+            }
+          ],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        },
+        {
+          "TargetEpisodeId": "EP04_02",
+          "ChoiceLabel": "그냥길",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 220,
+        "Y": 150
+      }
+    },
+    {
+      "EpisodeId": "EP02_02",
+      "Title": "잠긴 길",
+      "IndexText": "",
+      "DialogueEntryId": "EP02_02",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "EP03_02",
+          "ChoiceLabel": "요령이 늘었다",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": [
+            {
+              "Key": "power",
+              "Amount": 4,
+              "Op": "Add"
+            }
+          ]
+        }
+      ],
+      "EventKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 220,
+        "Y": 300
+      }
+    },
+    {
+      "EpisodeId": "EP02_03",
+      "Title": "그냥 길",
+      "IndexText": "",
+      "DialogueEntryId": "EP02_03",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [
+        {
+          "TargetEpisodeId": "EP03_02",
+          "ChoiceLabel": "요령없음",
+          "VisibleConditions": [],
+          "Conditions": [],
+          "LockedReasonText": "",
+          "ViaNodeId": "",
+          "StatChanges": []
+        }
+      ],
+      "EventKey": "",
+      "DesignerNote": "",
+      "Position": {
+        "X": 220,
+        "Y": 450
+      }
+    },
+    {
+      "EpisodeId": "EP04_01",
+      "Title": "엔딩 A",
+      "IndexText": "",
+      "DialogueEntryId": "EP04_01",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [],
+      "EventKey": "ENDING_A",
+      "DesignerNote": "",
+      "Position": {
+        "X": 660,
+        "Y": 150
+      }
+    },
+    {
+      "EpisodeId": "EP04_02",
+      "Title": "엔딩 B",
+      "IndexText": "",
+      "DialogueEntryId": "EP04_02",
+      "VisibleConditions": [],
+      "UnlockConditions": [],
+      "NextOptions": [],
+      "EventKey": "ENDING_B",
+      "DesignerNote": "",
+      "Position": {
+        "X": 660,
+        "Y": 700
+      }
+    }
+  ],
+  "EndingRules": []
+}
