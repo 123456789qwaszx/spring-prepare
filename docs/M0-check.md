@@ -197,11 +197,16 @@ DELETE FROM game.users;   -- 수동 확인으로 넣은 행. M1 부터는 DbClea
 
 | 항목 | 기대 | 결과 | 날짜 | 비고 |
 |---|---|---|---|---|
-| §2 bootRun | 4.1.1 배너, 8080 | | | |
-| §3.1 POST | 201 + Location + DB 행 | | | |
-| §3.2 재요청 | 409 DUPLICATE | | | |
-| §3.3 없는 id | 404 NOT_FOUND | | | |
-| §3.4 있는 id | 200, password 없음 | | | |
-| §3.5 공백 | 400 BAD_REQUEST | | | |
-| §3.5 31자 | 400 CONSTRAINT_VIOLATION | | | |
-| §4 test | 6 passed | | | |
+| §2 bootRun | 4.1.1 배너, 8080 | ✅ | 2026-08-29 | 첫 빌드에 컴파일 오류 없었음. D-001 복귀 성공 |
+| §3.1 POST | 201 + Location + DB 행 | ✅ | 2026-08-29 | `Invoke-WebRequest`로 alice(1), bob(2). `created_at` 14:37/14:38 KST 정상 |
+| §3.2 재요청 | 409 DUPLICATE | ✅ | 2026-08-29 | 자동 테스트로 확인 (수동 curl 미실행) |
+| §3.3 없는 id | 404 NOT_FOUND | ✅ | 2026-08-29 | 〃 |
+| §3.4 있는 id | 200, password 없음 | ✅ | 2026-08-29 | 〃 |
+| §3.5 공백 | 400 BAD_REQUEST | ✅ | 2026-08-29 | 〃 |
+| §3.5 31자 | 400 CONSTRAINT_VIOLATION | ✅ | 2026-08-29 | 〃. 통과했다는 것은 `sql_mode`에 `STRICT_TRANS_TABLES`가 켜져 있다는 뜻 |
+| §4 test | 6 passed | ✅ | 2026-08-29 | `game_test` 프로필로 6/6 |
+
+부수적으로 확인된 것:
+- `id`가 1, 2 → §1의 수동 probe INSERT는 건너뜀. 1062/1406 에러를 눈으로 보는 단계는 미실행이나, 자동 테스트가 같은 경로를 덮는다.
+- `password`가 평문(`1234`, `5678`)으로 저장됨 — 의도된 상태. M6에서 BCrypt로 전환.
+- 전체 `.\gradlew.bat test`(= `contextLoads` 포함)는 아직 미실행. `local` 프로필로 뜨므로 `application-local.properties`가 있는 이 PC에서는 통과할 것 (ANALYSIS §3.7).
