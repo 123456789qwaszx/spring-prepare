@@ -38,3 +38,5 @@ out/
 
 ### Local Config ###
 application-local.properties
+application-test.properties
+
