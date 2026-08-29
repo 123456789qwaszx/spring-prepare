@@ -1,0 +1,6 @@
+# 통합 테스트용 프로필 (D-002). 이 파일을 복사해 application-test.properties 로 만들고 값을 채운다.
+# application-test.properties 는 .gitignore 되어 있다. 테스트는 @ActiveProfiles("test") 로 이 프로필을 쓴다.
+# 주의: url 이 반드시 game_test 를 가리켜야 한다. game 을 가리키면 테스트가 개발 데이터를 지운다.
+spring.datasource.url=jdbc:mysql://localhost:3306/game_test?serverTimezone=Asia/Seoul
+spring.datasource.username=root
+spring.datasource.password=CHANGE_ME
