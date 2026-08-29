@@ -76,7 +76,7 @@ class SaveSlotApiTest {
                 .andExpect(jsonPath("$.revision").value(1))
                 .andExpect(jsonPath("$.updatedAt").isNotEmpty());
 
-        mockMvc.perform(putSlot(1, body("qwer", 1, "EP02_01", 25, "device-A")))
+        mockMvc.perform(putSlot(1, body(1, "qwer", 1, "EP02_01", 25, "device-A")))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.revision").value(2));
 
@@ -156,7 +156,7 @@ class SaveSlotApiTest {
         mockMvc.perform(putSlot(2, body("qwer", 1, "EP01", 10, "device-B")))
                 .andExpect(status().isOk());
         // 같은 기기로 또 올려도 늘지 않는다 — (user_id, device_key) UNIQUE 가 upsert 의 키다
-        mockMvc.perform(putSlot(1, body("qwer", 1, "EP01", 20, "device-A")))
+        mockMvc.perform(putSlot(1, body(1, "qwer", 1, "EP01", 20, "device-A")))
                 .andExpect(status().isOk());
 
         assertThat(count("devices")).isEqualTo(2);
@@ -166,7 +166,7 @@ class SaveSlotApiTest {
     void 기기를_보내지_않으면_device는_null이다() throws Exception {
         String noDevice = """
                 {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP01",
-                 "snapshot":%s,"playSeconds":0}
+                 "snapshot":%s,"playSeconds":0,"baseRevision":0}
                 """.formatted(SNAPSHOT);
 
         mockMvc.perform(putSlot(1, noDevice)).andExpect(status().isOk());
@@ -224,10 +224,19 @@ class SaveSlotApiTest {
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         String noSnapshot = """
-                {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP01"}
+                {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP01","baseRevision":0}
                 """;
         mockMvc.perform(putSlot(1, noSnapshot))
                 .andExpect(status().isBadRequest());
+
+        // M4: baseRevision 이 없으면 400. M2·M3 요청 형식과의 호환을 여기서 끊는다 — 의도한 것이다.
+        // 선택으로 두면 "안 보낸 요청은 무조건 덮어쓴다"가 되어 낙관적 동시성이 있으나 마나 해진다.
+        String noBase = """
+                {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP01","snapshot":%s}
+                """.formatted(SNAPSHOT);
+        mockMvc.perform(putSlot(1, noBase))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
         assertThat(count("save_slots")).isZero();
     }
@@ -243,7 +252,7 @@ class SaveSlotApiTest {
     void 챕터_버전을_올려_저장하면_그_버전을_가리킨다() throws Exception {
         mockMvc.perform(putSlot(1, body("qwer", 1, "EP01", 10, "device-A")))
                 .andExpect(status().isOk());
-        mockMvc.perform(putSlot(1, body("qwer", 2, "EP01", 10, "device-A")))
+        mockMvc.perform(putSlot(1, body(1, "qwer", 2, "EP01", 10, "device-A")))
                 .andExpect(status().isOk());
 
         // 세이브는 chapter_id 가 아니라 특정 버전을 가리킨다 (schema.sql 주석).
@@ -262,12 +271,22 @@ class SaveSlotApiTest {
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }
 
+    /**
+     * baseRevision 을 생략한 형태 = **신규 슬롯**(0). M4 에서 baseRevision 이 필수가 됐지만,
+     * 이 클래스의 테스트는 대부분 첫 업로드라 매번 0 을 적으면 눈에 띄어야 할 값이 묻힌다.
+     * 두 번째 업로드처럼 base 가 중요한 자리에서만 아래 6-인자 형태를 쓴다.
+     */
     private static String body(String chapterId, int version, String episodeId,
+                               int playSeconds, String deviceKey) {
+        return body(0, chapterId, version, episodeId, playSeconds, deviceKey);
+    }
+
+    private static String body(long baseRevision, String chapterId, int version, String episodeId,
                                int playSeconds, String deviceKey) {
         return """
                 {"chapterId":"%s","chapterVersion":%d,"currentEpisodeId":"%s",
-                 "snapshot":%s,"playSeconds":%d,"deviceKey":"%s"}
-                """.formatted(chapterId, version, episodeId, SNAPSHOT, playSeconds, deviceKey);
+                 "snapshot":%s,"playSeconds":%d,"deviceKey":"%s","baseRevision":%d}
+                """.formatted(chapterId, version, episodeId, SNAPSHOT, playSeconds, deviceKey, baseRevision);
     }
 
     private int count(String table) {

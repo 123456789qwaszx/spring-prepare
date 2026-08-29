@@ -7,8 +7,11 @@ import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * event_log — [1] 영구 계층의 실체. EventKey 가 붙은 에피소드를 다 보면 한 행.
@@ -80,5 +83,28 @@ public class EventLogRepository {
                 .param("playthroughId", playthroughId)
                 .query(EventLogItem.class)
                 .list();
+    }
+
+    // force 전용 (M4). uk_event_once 는 (playthrough_id, event_key, chapter_content_id, episode_id) 인데
+    // event_key 는 서버가 episode_id 로 찾는 값이므로, episode_id 만 알면 중복 여부가 정해진다.
+    private static final String SELECT_EXISTING_EPISODES = """
+            SELECT episode_id
+            FROM event_log
+            WHERE playthrough_id     = :playthroughId
+              AND chapter_content_id = :chapterContentId
+              AND episode_id IN (:episodeIds)
+            """;
+
+    public Set<String> existingEpisodeIds(long playthroughId, long chapterContentId,
+                                          Collection<String> episodeIds) {
+        if (episodeIds.isEmpty()) {
+            return Set.of();
+        }
+        return new LinkedHashSet<>(jdbc.sql(SELECT_EXISTING_EPISODES)
+                .param("playthroughId", playthroughId)
+                .param("chapterContentId", chapterContentId)
+                .param("episodeIds", episodeIds)
+                .query(String.class)
+                .list());
     }
 }

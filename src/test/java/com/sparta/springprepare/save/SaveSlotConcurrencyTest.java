@@ -29,9 +29,9 @@ import static org.springframework.test.web.servlet.request.MockMvcRequestBuilder
 /**
  * 두 기기가 같은 슬롯에 <b>동시에</b> 쓴다 (PLAN M4).
  *
- * <h3>이 테스트는 지금 실패한다. 그게 목적이다.</h3>
- * M4를 시작하는 자리에서 이걸 먼저 쓰는 이유는, 고칠 것이 무엇인지를 **말이 아니라 실행 결과로** 못박기
- * 위해서다. 지금 코드(M3)는 `ON DUPLICATE KEY UPDATE` 하나로 쓰기를 처리하므로:
+ * <h3>이 테스트는 M4 구현 전에 먼저 쓰였고, 그때는 실패했다</h3>
+ * 고칠 것이 무엇인지를 **말이 아니라 실행 결과로** 못박기 위해서다. M3 코드는
+ * `ON DUPLICATE KEY UPDATE` 하나로 쓰기를 처리했으므로:
  *
  * <pre>
  *   기대: 200 하나, 409 하나        — 한 쪽은 자기 것이 밀렸다는 사실을 안다
@@ -87,7 +87,7 @@ class SaveSlotConcurrencyTest {
             for (int slotNo = 1; slotNo <= ROUNDS; slotNo++) {
                 // 준비: 슬롯을 하나 만들어 둔다 → revision 1.
                 // 두 기기가 이 상태를 각자 읽어 갔다고 보면 된다.
-                mockMvc.perform(putSlot(slotNo, body("EP01", 10, "device-A")))
+                mockMvc.perform(putSlot(slotNo, body(0, "EP01", 10, "device-A")))
                         .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers
                                 .status().isOk());
 
@@ -96,7 +96,8 @@ class SaveSlotConcurrencyTest {
                 long ok = statuses.stream().filter(s -> s == 200).count();
                 long conflict = statuses.stream().filter(s -> s == 409).count();
 
-                // 이 두 줄이 M4의 완료 기준이다.
+                // 이 두 줄이 M4의 완료 기준이다. 둘 다 base 1 로 보냈지만
+                // 조건부 UPDATE 를 통과하는 것은 먼저 도착한 하나뿐이다.
                 assertThat(ok).as("round %d: 200 의 수", slotNo).isEqualTo(1L);
                 assertThat(conflict).as("round %d: 409 의 수", slotNo).isEqualTo(1L);
 
@@ -114,8 +115,10 @@ class SaveSlotConcurrencyTest {
         CountDownLatch ready = new CountDownLatch(2);
         CountDownLatch start = new CountDownLatch(1);
 
-        Callable<Integer> deviceA = task(ready, start, slotNo, body("EP02_01", 100, "device-A"));
-        Callable<Integer> deviceB = task(ready, start, slotNo, body("EP02_01", 200, "device-B"));
+        // 둘 다 base 1 로 보낸다 — "내가 읽었을 때 서버는 revision 1 이었다".
+        // 실제로 그랬고 둘 다 맞는 말이다. 그래서 하나만 이기는 것이 정답이다.
+        Callable<Integer> deviceA = task(ready, start, slotNo, body(1, "EP02_01", 100, "device-A"));
+        Callable<Integer> deviceB = task(ready, start, slotNo, body(1, "EP02_01", 200, "device-B"));
 
         Future<Integer> fa = pool.submit(deviceA);
         Future<Integer> fb = pool.submit(deviceB);
@@ -150,11 +153,11 @@ class SaveSlotConcurrencyTest {
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }
 
-    private static String body(String episodeId, int playSeconds, String deviceKey) {
+    private static String body(long baseRevision, String episodeId, int playSeconds, String deviceKey) {
         return """
                 {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"%s",
-                 "snapshot":%s,"playSeconds":%d,"deviceKey":"%s"}
-                """.formatted(episodeId, SNAPSHOT, playSeconds, deviceKey);
+                 "snapshot":%s,"playSeconds":%d,"deviceKey":"%s","baseRevision":%d}
+                """.formatted(episodeId, SNAPSHOT, playSeconds, deviceKey, baseRevision);
     }
 
     private long revisionOf(int slotNo) {

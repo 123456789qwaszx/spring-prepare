@@ -36,6 +36,18 @@ public class GlobalExceptionHandler {
     }
 
     /**
+     * 낙관적 동시성 충돌 (M4). 조건부 UPDATE 가 0행이었다 — DB 제약 위반이 아니라 **전제가 틀린 것**이다.
+     *
+     * DuplicateKeyException 과 같은 409 지만 code 가 다르다(`CONFLICT` vs `DUPLICATE`).
+     * 예외 계층이 겹치지 않으므로 핸들러 선택에 모호함은 없다.
+     */
+    @ExceptionHandler(ConflictException.class)
+    public ResponseEntity<ConflictResponse> handleConflict(ConflictException e) {
+        return ResponseEntity.status(HttpStatus.CONFLICT)
+                .body(new ConflictResponse("CONFLICT", e.getMessage(), e.current()));
+    }
+
+    /**
      * UNIQUE 제약 위반. M0에서는 users.username, 이후 (chapter_id, version), (save_slot_id, seq) 등.
      * DB가 막은 것을 앱이 409로 번역한다 — 앱은 "이미 있는지" 미리 SELECT 하지 않는다.
      * (SELECT 후 INSERT 는 두 요청이 동시에 오면 둘 다 통과한다. UNIQUE 만이 확실한 방어선이다.)

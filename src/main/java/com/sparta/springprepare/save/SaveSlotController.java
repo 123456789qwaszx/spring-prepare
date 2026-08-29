@@ -35,11 +35,20 @@ public class SaveSlotController {
         this.historyService = historyService;
     }
 
+    /**
+     * @param force 충돌을 확인하고도 내 것으로 덮겠다는 뜻 (M4). 쿼리 파라미터인 이유는 자원을 식별하는 값이
+     *              아니라 **처리 방식**을 고르는 값이기 때문이다. 본문에 넣으면 세이브 데이터의 일부처럼 보인다.
+     *
+     *              <p>force 여도 {@code baseRevision} 은 여전히 맞아야 한다 (D-010). 409 로 받은 서버
+     *              revision 을 넣어 다시 보내는 것이 정상 흐름이고, 그래야 그 사이 끼어든 세 번째 기기도 걸린다.
+     *              "무조건 덮어쓰기"가 아니라 **"내가 본 그 상태 위에 덮어쓰기"** 다.
+     */
     @PutMapping("/{slotNo}")
     public SaveUploadResponse upsert(@PathVariable long playthroughId,
                                      @PathVariable int slotNo,
+                                     @RequestParam(defaultValue = "false") boolean force,
                                      @RequestBody SaveUploadRequest request) {
-        return service.upsert(playthroughId, slotNo, request);
+        return service.upsert(playthroughId, slotNo, force, request);
     }
 
     @GetMapping

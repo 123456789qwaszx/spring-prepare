@@ -1,6 +1,7 @@
 package com.sparta.springprepare.save;
 
 import com.sparta.springprepare.common.BadRequestException;
+import com.sparta.springprepare.common.ConflictException;
 import com.sparta.springprepare.common.NotFoundException;
 import com.sparta.springprepare.content.ChapterContentRepository;
 import com.sparta.springprepare.content.ChapterEpisode;
@@ -15,14 +16,21 @@ import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
+import java.util.Optional;
 import java.util.Set;
 
 /**
- * 세이브 업로드·복구 (PLAN M2 + M3).
+ * 세이브 업로드·복구 (PLAN M2 + M3 + M4).
  *
  * 서버는 스냅샷을 **열지 않는다**. nodeName 이든 스탯이든 어떤 키도 읽지 않고 통째로 보관했다가 통째로 돌려준다.
  * 이 서비스가 검사하는 것은 스냅샷 바깥의 것들뿐이다 — 슬롯 번호 범위, 회차 존재, 콘텐츠 버전 존재,
- * 그리고 M3 에서 더해진 것: 동봉된 선택·이벤트가 **그 콘텐츠 버전에 실재하는 에피소드**를 가리키는가.
+ * 동봉된 선택·이벤트가 그 콘텐츠 버전에 실재하는 에피소드를 가리키는가(M3),
+ * 그리고 **클라가 알던 상태가 아직 유효한가**(M4).
+ *
+ * <p>M4 에서 이 클래스의 성격이 한 번 바뀐다. M2·M3 의 쓰기는 <b>항상 성공했다</b> —
+ * 검증만 통과하면 `ON DUPLICATE KEY UPDATE` 가 무조건 반영했다. M4 부터는 "성공했지만 반영하지 않음"
+ * (재전송)과 "실패했고 그 이유가 남의 쓰기"(충돌)라는 두 갈래가 생긴다. 상태 코드가 셋에서 다섯으로 늘어난 것이 아니라,
+ * <b>같은 요청에 서로 다른 답이 있을 수 있다는 것을 서버가 인정한 것</b>이다.
  */
 @Service
 public class SaveSlotService {
@@ -70,24 +78,37 @@ public class SaveSlotService {
 
     /**
      * 한 트랜잭션 안에서 최대 네 테이블(devices, save_slots, choice_history, event_log)이 쓰인다.
-     * M2 에서는 경계가 있어도 하는 일이 적었지만, M3 에서 이 경계가 진짜 일을 한다 —
-     * 선택 세 건 중 하나가 틀리면 슬롯의 revision 조차 오르지 않는다.
      *
-     * <h3>순서</h3>
+     * <h3>다섯 갈래 (M4)</h3>
      * <pre>
-     *   1. 형식 검증        (슬롯 범위, 필수값)          → 400
-     *   2. 존재 검증        (회차, 콘텐츠 버전, 에피소드) → 404 / 400
-     *   3. 쓰기             (기기 → 슬롯 → 선택 → 이벤트)
-     *   4. 상태 재조회      (revision·updated_at 은 DB 의 사실)
+     *   신규      슬롯이 없다                          → INSERT, revision 1
+     *   재전송    revision == base+1 이고 seq 가 전부 있다 → 200 replayed, **아무것도 쓰지 않는다**
+     *   정상      조건부 UPDATE 가 1행                  → 200
+     *   충돌      조건부 UPDATE 가 0행                  → 409 + 현재 서버 상태
+     *   force     이력은 새 것만, 스냅샷은 덮어쓴다      → 200
      * </pre>
      *
-     * <b>쓰기를 시작하기 전에 판정을 모두 끝낸다</b>는 것이 이 순서의 전부다 (M3 계획서 §3-2).
-     * 없는 episodeId 를 그냥 INSERT 해도 복합 FK 가 막아 주고 롤백되므로 결과는 같아 보이지만,
-     * 그때 클라가 받는 것은 "Cannot add or update a child row..." 라는 드라이버 메시지다.
-     * 롤백은 안전망이고 사전 검증은 정상 경로다 — 안전망이 작동한 것을 정상이라 부르지 않는다.
+     * <h3>순서가 곧 정확성이다</h3>
+     * <pre>
+     *   1. 형식 검증   (슬롯 범위, 필수값, baseRevision)  → 400
+     *   2. 존재 검증   (회차, 콘텐츠 버전, 에피소드)       → 404 / 400
+     *   3. 현재 슬롯 조회
+     *   4. 재전송 판정  ← **쓰기보다 먼저.** 뒤에 두면 replayed 인데 revision 이 올라간다
+     *   5. 조건부 UPDATE (0행이면 409)
+     *   6. 이력 배치     ← UPDATE 보다 뒤. 충돌이면 이력이 안 쌓인다
+     * </pre>
+     *
+     * 4·5 가 6 보다 앞인 것이 핵심이다. 같은 트랜잭션이라 6 이 실패하면 5 도 롤백되지만,
+     * <b>롤백은 안전망이지 정상 경로가 아니다</b> — M3 에서 세운 원칙 그대로다.
+     *
+     * @param force 충돌을 확인하고도 내 것으로 덮겠다는 뜻. <b>revision 조건을 건너뛰지는 않는다</b>(D-010) —
+     *              클라는 409 로 받은 서버 revision 을 baseRevision 에 넣어 다시 보내야 한다.
+     *              그래야 그 사이 끼어든 <i>세 번째</i> 기기까지 걸러진다. force 가 바꾸는 것은 이력뿐이다:
+     *              이미 있는 seq·이벤트를 빼고 새 것만 INSERT 한다.
      */
     @Transactional
-    public SaveUploadResponse upsert(long playthroughId, int slotNo, SaveUploadRequest request) {
+    public SaveUploadResponse upsert(long playthroughId, int slotNo, boolean force,
+                                     SaveUploadRequest request) {
         if (slotNo < SLOT_NO_MIN || slotNo > SLOT_NO_MAX) {
             throw new BadRequestException(
                     "슬롯 번호는 " + SLOT_NO_MIN + "~" + SLOT_NO_MAX + " 범위여야 합니다: " + slotNo);
@@ -101,6 +122,12 @@ public class SaveSlotService {
         if (request.snapshot() == null || request.snapshot().isMissingNode()) {
             throw new BadRequestException("snapshot 이 없습니다.");
         }
+        // M2·M3 요청과의 호환을 여기서 끊는다 — 의도한 것이다 (SaveUploadRequest 주석).
+        if (request.baseRevision() == null) {
+            throw new BadRequestException(
+                    "baseRevision 이 없습니다. 직전 응답의 revision 을 그대로 보내십시오 (신규 슬롯은 0).");
+        }
+        long base = request.baseRevision();
 
         List<ChoiceUpload> choices = request.choicesOrEmpty();
         List<EventUpload> events = request.eventsOrEmpty();
@@ -122,30 +149,117 @@ public class SaveSlotService {
         Map<String, String> eventKeyByEpisode =
                 resolveEpisodes(chapterContentId, choices, events);
 
-        // deviceKey 는 선택이다. 없으면 device_id 가 NULL 로 남는다 (M2 까지는 허용).
-        // M4 의 충돌 요약이 "어느 기기가 덮었는가"를 보여주려면 필요해진다.
-        Long deviceId = null;
-        if (request.deviceKey() != null && !request.deviceKey().isBlank()) {
-            deviceId = deviceRepository.upsert(playthrough.userId(), request.deviceKey());
-        }
-
-        // 스냅샷을 문자열로 되돌린다. 내용을 읽는 것이 아니라 직렬화만 한다.
         String snapshotJson = objectMapper.writeValueAsString(request.snapshot());
         int playSeconds = request.playSeconds() == null ? 0 : request.playSeconds();
 
-        saveSlotRepository.upsert(playthroughId, slotNo, chapterContentId,
+        Optional<SaveSlotState> found = saveSlotRepository.findState(playthroughId, slotNo);
+
+        // ── 신규 ────────────────────────────────────────────────────
+        if (found.isEmpty()) {
+            if (base != 0) {
+                throw new BadRequestException(
+                        "슬롯이 없는데 baseRevision 이 " + base + " 입니다. 신규 슬롯은 0 이어야 합니다.");
+            }
+            Long deviceId = resolveDevice(playthrough, request);
+            saveSlotRepository.insert(playthroughId, slotNo, chapterContentId,
+                    request.currentEpisodeId(), snapshotJson, playSeconds, deviceId);
+            SaveSlotState created = reloadState(playthroughId, slotNo);
+            writeHistory(created.id(), playthroughId, chapterContentId, choices, events, eventKeyByEpisode);
+            return SaveUploadResponse.applied(created, choices.size(), events.size());
+        }
+
+        SaveSlotState current = found.get();
+
+        // ── 재전송 ──────────────────────────────────────────────────
+        // 쓰기보다 먼저다. 뒤에 두면 "이미 했다"고 답하면서 revision 은 올라간다.
+        if (!force && isReplay(current, base, choices)) {
+            return SaveUploadResponse.replayed(current);
+        }
+
+        // ── 정상 / 충돌 ─────────────────────────────────────────────
+        Long deviceId = resolveDevice(playthrough, request);
+        int affected = saveSlotRepository.updateIfRevision(playthroughId, slotNo, base, chapterContentId,
                 request.currentEpisodeId(), snapshotJson, playSeconds, deviceId);
+        if (affected == 0) {
+            // 지금 서버가 어떤 상태인지를 함께 준다 — 클라가 다시 GET 하는 왕복을 아끼고,
+            // 그 사이 또 바뀔 여지도 없앤다. 이 필드들이 M8 충돌 UI 가 보여줄 것이다.
+            throw new ConflictException(
+                    "다른 기기가 먼저 저장했습니다. baseRevision=" + base,
+                    saveSlotRepository.findSummary(playthroughId, slotNo).orElse(null));
+        }
 
-        // revision·updated_at 은 DB 가 만든 값이다. 앱이 세면 두 요청이 겹칠 때 같은 값을 두 번 발급한다.
-        // id 도 여기서 얻는다 — choice_history 가 save_slot_id 로 이 슬롯을 가리켜야 하는데,
-        // upsert 는 갱신 경로에서 생성 키를 주지 않는다.
-        SaveSlotState state = saveSlotRepository.findState(playthroughId, slotNo)
-                .orElseThrow(() -> new IllegalStateException("방금 upsert 한 슬롯을 찾지 못했다"));
+        SaveSlotState updated = reloadState(playthroughId, slotNo);
 
-        choiceHistoryRepository.insertAll(state.id(), chapterContentId, choices);
+        // ── force: 새 것만 ──────────────────────────────────────────
+        List<ChoiceUpload> newChoices = choices;
+        List<EventUpload> newEvents = events;
+        if (force) {
+            Set<Integer> takenSeqs = choiceHistoryRepository.existingSeqs(updated.id(), seqsOf(choices));
+            newChoices = choices.stream().filter(c -> !takenSeqs.contains(c.seq())).toList();
+
+            Set<String> takenEpisodes = eventLogRepository.existingEpisodeIds(
+                    playthroughId, chapterContentId, episodeIdsOf(events));
+            newEvents = events.stream().filter(e -> !takenEpisodes.contains(e.episodeId())).toList();
+        }
+
+        writeHistory(updated.id(), playthroughId, chapterContentId, newChoices, newEvents, eventKeyByEpisode);
+        return SaveUploadResponse.applied(updated, newChoices.size(), newEvents.size());
+    }
+
+    /**
+     * "내가 방금 보낸 그 요청인가" (D-010).
+     *
+     * 두 조건이 **모두** 맞아야 한다:
+     * <ol>
+     *   <li>{@code 서버 revision == base + 1} — 정확히 한 번 적용된 상태다. 두 번 올랐으면 누가 더 썼다는 뜻.</li>
+     *   <li>동봉된 seq 가 <b>전부</b> 이미 있다 — 하나라도 새 것이면 재전송이 아니라 새 요청이다.</li>
+     * </ol>
+     *
+     * <p><b>choices 가 비면 판정하지 않는다.</b> 그러면 아래의 조건부 UPDATE 로 넘어가고,
+     * base 가 낡았으므로 자연히 409 가 난다. PLAN 원문은 여기서 200 을 주라고 했지만 D-010 이 뒤집었다 —
+     * 200 을 주면 <b>충돌을 재전송으로 오인</b>해, 다른 기기가 덮었는데도 클라는 "저장됐다"고 믿는다.
+     * 세이브만 올리는 요청(choices 없음)은 드문 예외가 아니라 정상 경로라 그 오인이 자주 일어난다.
+     *
+     * <p>구현에 별도 분기가 없다는 점을 눈여겨볼 만하다. "판정 불가"를 특별 취급하지 않아도 답이 맞는다.
+     */
+    private boolean isReplay(SaveSlotState current, long base, List<ChoiceUpload> choices) {
+        if (choices.isEmpty()) {
+            return false;
+        }
+        if (current.revision() != base + 1) {
+            return false;
+        }
+        List<Integer> seqs = seqsOf(choices);
+        return choiceHistoryRepository.existingSeqs(current.id(), seqs).size() == seqs.size();
+    }
+
+    private void writeHistory(long saveSlotId, long playthroughId, long chapterContentId,
+                              List<ChoiceUpload> choices, List<EventUpload> events,
+                              Map<String, String> eventKeyByEpisode) {
+        choiceHistoryRepository.insertAll(saveSlotId, chapterContentId, choices);
         eventLogRepository.insertAll(playthroughId, chapterContentId, events, eventKeyByEpisode);
+    }
 
-        return SaveUploadResponse.of(state, choices.size(), events.size());
+    /** deviceKey 는 선택이다. 없으면 device_id 가 NULL 로 남는다 — 그 슬롯도 목록에서 사라지면 안 된다. */
+    private Long resolveDevice(Playthrough playthrough, SaveUploadRequest request) {
+        if (request.deviceKey() == null || request.deviceKey().isBlank()) {
+            return null;
+        }
+        return deviceRepository.upsert(playthrough.userId(), request.deviceKey());
+    }
+
+    /** revision·updated_at 은 DB 가 만든 값이다. 앱이 세면 두 요청이 겹칠 때 같은 값을 두 번 발급한다. */
+    private SaveSlotState reloadState(long playthroughId, int slotNo) {
+        return saveSlotRepository.findState(playthroughId, slotNo)
+                .orElseThrow(() -> new IllegalStateException("방금 쓴 슬롯을 찾지 못했다"));
+    }
+
+    private static List<Integer> seqsOf(List<ChoiceUpload> choices) {
+        return choices.stream().map(ChoiceUpload::seq).toList();
+    }
+
+    private static List<String> episodeIdsOf(List<EventUpload> events) {
+        return events.stream().map(EventUpload::episodeId).toList();
     }
 
     /**

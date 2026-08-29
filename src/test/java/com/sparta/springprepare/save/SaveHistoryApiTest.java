@@ -220,7 +220,7 @@ class SaveHistoryApiTest {
                 """))).andExpect(status().isOk());
 
         // 두 번째 요청: seq 2 는 멀쩡하고 seq 3 만 없는 에피소드다.
-        mockMvc.perform(putSlot(1, bodyWith("""
+        mockMvc.perform(putSlot(1, bodyWith(1, """
                 "choices":[
                   {"seq":2,"episodeId":"EP02_01","optionIndex":0,"chosenAt":"2026-08-29T11:10:11Z"},
                   {"seq":3,"episodeId":"EP99_NOPE","optionIndex":0,"chosenAt":"2026-08-29T11:20:13Z"}
@@ -252,21 +252,26 @@ class SaveHistoryApiTest {
     }
 
     @Test
-    void 같은_seq를_다시_보내면_409다() throws Exception {
+    void 같은_요청을_다시_보내면_200_replayed다() throws Exception {
         String same = bodyWith("""
                 "choices":[{"seq":1,"episodeId":"EP01","optionIndex":0,"chosenAt":"2026-08-29T11:00:07Z"}]
                 """);
 
-        mockMvc.perform(putSlot(1, same)).andExpect(status().isOk());
-
-        // (save_slot_id, seq) UNIQUE 위반 → DuplicateKeyException → 409.
-        // M4 에서 이것을 "이미 받았다"(200 replayed)로 바꾼다. 지금은 409 인 것을 **확인**하는 것이 출발점이다.
         mockMvc.perform(putSlot(1, same))
-                .andExpect(status().isConflict())
-                .andExpect(jsonPath("$.code").value("DUPLICATE"));
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.replayed").value(false))
+                .andExpect(jsonPath("$.acceptedChoices").value(1));
+
+        // M3 에서는 여기가 409 DUPLICATE 였다 — (save_slot_id, seq) UNIQUE 위반.
+        // M4 는 그 전에 "내가 방금 보낸 그 요청"임을 알아보고 200 을 준다 (D-010).
+        // 응답을 못 받아 재전송한 클라 입장에서 이 요청의 목적은 이미 달성돼 있다.
+        mockMvc.perform(putSlot(1, same))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.replayed").value(true))
+                .andExpect(jsonPath("$.acceptedChoices").value(0));
 
         assertThat(count("choice_history")).isEqualTo(1);
-        // 재전송이 revision 을 올리지도 않았다 — 실패한 요청은 아무 흔적도 남기지 않는다.
+        // 아무것도 쓰지 않았으므로 revision 도 그대로다.
         assertThat(revisionOfSlot1()).isEqualTo(1);
     }
 
@@ -354,7 +359,7 @@ class SaveHistoryApiTest {
 
         String body = """
                 {"chapterId":"qwer-events","chapterVersion":1,"currentEpisodeId":"EP04_01",
-                 "snapshot":%s,"playSeconds":600,"deviceKey":"device-A",
+                 "snapshot":%s,"playSeconds":600,"deviceKey":"device-A","baseRevision":0,
                  "events":[{"episodeId":"EP04_01","occurredAt":"2026-08-29T11:30:17Z"}]}
                 """.formatted(SNAPSHOT);
 
@@ -371,7 +376,7 @@ class SaveHistoryApiTest {
         // 같은 파일의 EventKey 없는 노드에는 여전히 이벤트를 걸 수 없다.
         mockMvc.perform(putSlot(2, """
                 {"chapterId":"qwer-events","chapterVersion":1,"currentEpisodeId":"EP01",
-                 "snapshot":%s,
+                 "snapshot":%s,"baseRevision":0,
                  "events":[{"episodeId":"EP02_01","occurredAt":"2026-08-29T11:30:17Z"}]}
                 """.formatted(SNAPSHOT)))
                 .andExpect(status().isBadRequest());
@@ -385,12 +390,16 @@ class SaveHistoryApiTest {
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }
 
-    /** M2 의 필수 필드를 채우고 그 뒤에 M3 의 부분만 붙인다. null 이면 M2 요청 그대로. */
+    /** M2 의 필수 필드를 채우고 그 뒤에 M3 의 부분만 붙인다. null 이면 이력 없는 요청. baseRevision 은 0(신규). */
     private static String bodyWith(String historyJson) {
+        return bodyWith(0, historyJson);
+    }
+
+    private static String bodyWith(long baseRevision, String historyJson) {
         String base = """
                 {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP02_01",
-                 "snapshot":%s,"playSeconds":120,"deviceKey":"device-A"
-                """.formatted(SNAPSHOT).stripTrailing();
+                 "snapshot":%s,"playSeconds":120,"deviceKey":"device-A","baseRevision":%d
+                """.formatted(SNAPSHOT, baseRevision).stripTrailing();
         return historyJson == null ? base + "}" : base + ",\n" + historyJson + "}";
     }
 

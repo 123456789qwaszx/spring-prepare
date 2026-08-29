@@ -7,7 +7,10 @@ import org.springframework.jdbc.core.namedparam.SqlParameterSource;
 import org.springframework.jdbc.core.simple.JdbcClient;
 import org.springframework.stereotype.Repository;
 
+import java.util.Collection;
+import java.util.LinkedHashSet;
 import java.util.List;
+import java.util.Set;
 
 /**
  * choice_history — 선택 이력. 슬롯 하나에 seq 순으로 쌓인다.
@@ -72,5 +75,31 @@ public class ChoiceHistoryRepository {
                 .param("afterSeq", afterSeq)
                 .query(ChoiceHistoryItem.class)
                 .list();
+    }
+
+    // M4 가 두 가지에 쓴다. 같은 조회로 두 질문에 답한다 (M3 의 findByIds 와 같은 방식).
+    //  - 재전송 판정: 보낸 seq 가 **전부** 이미 있으면 "내가 방금 보낸 그 요청"이다 (D-010)
+    //  - force: 이미 있는 것을 빼고 **새 것만** INSERT 한다
+    private static final String SELECT_EXISTING_SEQS = """
+            SELECT seq
+            FROM choice_history
+            WHERE save_slot_id = :saveSlotId AND seq IN (:seqs)
+            """;
+
+    /**
+     * force 에서 INSERT IGNORE 를 쓰지 않는 이유가 여기 있다.
+     * {@code INSERT IGNORE} 는 UNIQUE 위반만이 아니라 **FK 위반·타입 오류까지 경고로 바꿔 삼킨다** —
+     * 없는 에피소드를 가리키는 선택이 조용히 사라지고 아무도 모른다.
+     * 무엇을 무시할지 고르지 못하는 도구는, 무시하면 안 되는 것도 무시한다.
+     */
+    public Set<Integer> existingSeqs(long saveSlotId, Collection<Integer> seqs) {
+        if (seqs.isEmpty()) {
+            return Set.of();     // IN () 은 SQL 문법 오류다
+        }
+        return new LinkedHashSet<>(jdbc.sql(SELECT_EXISTING_SEQS)
+                .param("saveSlotId", saveSlotId)
+                .param("seqs", seqs)
+                .query(Integer.class)
+                .list());
     }
 }
