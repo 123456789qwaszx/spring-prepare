@@ -1,6 +1,7 @@
 plugins {
     id 'java'
-    id 'org.springframework.boot' version '3.1.0'
+    // D-001: init 커밋과 PLAN.md 기준인 4.1.1로 복귀. 3.x는 JdbcClient가 없고(3.2 미만) OSS 지원 종료.
+    id 'org.springframework.boot' version '4.1.1'
     id 'io.spring.dependency-management' version '1.1.7'
 }
 
@@ -19,18 +20,36 @@ repositories {
 }
 
 dependencies {
-    implementation 'org.springframework.boot:spring-boot-starter-web'
+    // Boot 4.x 스타터 이름: starter-web → starter-webmvc (3.x 강의 자료와 다른 점)
+    implementation 'org.springframework.boot:spring-boot-starter-webmvc'
+    // 실습2(메모장 화면) 유지용. 실습3에서는 쓰지 않는다.
     implementation 'org.springframework.boot:spring-boot-starter-thymeleaf'
-    compileOnly 'org.projectlombok:lombok'
-    annotationProcessor 'org.projectlombok:lombok'
-    testImplementation 'org.springframework.boot:spring-boot-starter-test'
-    testCompileOnly 'org.projectlombok:lombok'
-    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
-    testAnnotationProcessor 'org.projectlombok:lombok'
+    // JdbcClient + HikariCP. JPA는 M9 비교 과제 전까지 넣지 않는다 (PLAN §2.2).
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     runtimeOnly 'com.mysql:mysql-connector-j'
+
+    // 실습1·2 코드(Book, Memo)가 쓴다. 실습3 코드는 record를 써서 Lombok이 필요 없다 (PLAN §2.5).
+    compileOnly 'org.projectlombok:lombok'
+    annotationProcessor 'org.projectlombok:lombok'
+    testCompileOnly 'org.projectlombok:lombok'
+    testAnnotationProcessor 'org.projectlombok:lombok'
+
+    // Boot 4.x: starter-test → starter-webmvc-test (JUnit5, AssertJ, MockMvc, json-path 포함)
+    testImplementation 'org.springframework.boot:spring-boot-starter-webmvc-test'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
+}
+
+// 소스는 UTF-8 이고 한글 리터럴·주석·테스트 메서드명이 있다. JDK 17 javac 는 OS 기본 인코딩(한국어 Windows = MS949)을
+// 따르므로 명시하지 않으면 한글이 깨지거나 "unmappable character" 오류가 난다. (JDK 18+ 는 UTF-8 이 기본이지만 toolchain 이 17.)
+tasks.withType(JavaCompile).configureEach {
+    options.encoding = 'UTF-8'
 }
 
 tasks.named('test') {
     useJUnitPlatform()
+    // 테스트 결과를 콘솔에서 바로 보기 위해. 실패 시 스택트레이스 전체를 Claude 에게 붙여 넣기 좋게.
+    testLogging {
+        events 'passed', 'failed', 'skipped'
+        exceptionFormat 'full'
+    }
 }
