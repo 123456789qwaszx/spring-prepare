@@ -131,7 +131,7 @@ Invoke-WebRequest 'http://localhost:8080/content/chapters/qwer/latest' | Select-
 ```powershell
 Invoke-WebRequest 'http://localhost:8080/content/chapters/qwer/1' -OutFile "$env:TEMP\down.json"
 (Get-Item $SAMPLE).Length            # 5686
-(Get-Item "$env:TEMP\down.json").Length   # 약 3240 — 43% 가 사라졌다
+(Get-Item "$env:TEMP\down.json").Length   # 3581 — 37% 가 사라졌다
 ```
 
 바이트는 다르다. MySQL `JSON` 컬럼이 공백·들여쓰기를 제거하고 키 순서를 정규화했기 때문이다.
@@ -241,7 +241,7 @@ FROM chapter_contents WHERE chapter_id = 'qwer' AND version = 1;
                    --tests "com.sparta.springprepare.content.*"
 ```
 
-기대: `ChecksumTest` 5건 + `ChapterContentApiTest` 10건 + `GameDefinitionApiTest` 6건.
+기대: `ChecksumTest` 5건 + `ChapterContentApiTest` 12건 + `GameDefinitionApiTest` 6건 = **23건**.
 
 자주 걸리는 곳:
 
@@ -256,16 +256,24 @@ FROM chapter_contents WHERE chapter_id = 'qwer' AND version = 1;
 
 ## 6. 결과 기록
 
+**전부 통과 — 2026-08-29.**
+
 | 항목 | 기대 | 결과 | 비고 |
 |---|---|---|---|
-| §0 마이그레이션 | 두 DB 모두 checksum 컬럼 | | |
-| §2 bootRun | 기동 성공 | | |
-| §3.1 첫 수입 | 201, v1, 8 | | |
-| §3.2 재수입 | **200**, v1, 행 그대로 | | |
-| §3.3 바이트 변경 | 201, v2 | | |
-| §3.4 조회 | 목록/버전/본문 | | |
-| §3.5 원본 보존 | 바이트↓, 의미 동일, 한글 정상 | | |
-| §3.6 400 두 가지 | BAD_REQUEST | | |
-| §3.7 롤백 | 4xx + 두 테이블 0행 | | 상태 코드를 적을 것 → |
-| §3.8 definition | 201 → 200 | | |
-| §5 테스트 | 21건 통과 | | |
+| §0 마이그레이션 | 두 DB 모두 checksum 컬럼 | ✅ | **`game` 에 테이블이 `users` 하나뿐이었다** — 8개를 복구한 뒤 적용. ANALYSIS R4 가 현실화한 사례 |
+| §2 bootRun | 기동 성공 | ✅ | 1.005초. Jackson 3·`NamedParameterJdbcTemplate` 주입 정상. (첫 시도는 M0 때 띄운 서버가 8080 을 점유해 실패 — 옛 인스턴스는 M0 코드라 반드시 죽이고 재기동해야 한다) |
+| §3.1 첫 수입 | 201, v1, 8 | ✅ | |
+| §3.2 재수입 | **200**, v1, 행 그대로 | ✅ | 409 가 아니다. 정상 경로는 checksum 조회 |
+| §3.3 바이트 변경 | 201, v2 | ✅ | LF 한 바이트 추가. 의미가 같아도 다른 파일 |
+| §3.4 조회 | 목록/버전/본문 | ✅ | 자동 테스트로 확인 (수동 생략) |
+| §3.5 원본 보존 | 바이트↓, 의미 동일, 한글 정상 | ✅ | **5,686 → 3,581 바이트(37% 감소).** 노드 수 일치, 라벨 `선택지 골라.` 양쪽 동일 |
+| §3.6 400 두 가지 | BAD_REQUEST | ✅ | 자동 테스트로 확인 (수동 생략) |
+| §3.7 롤백 | 4xx + 두 테이블 0행 | ✅ | **409 `DUPLICATE`.** 배치 INSERT 실패도 `DuplicateKeyException` 으로 번역된다 |
+| §3.8 definition | 201 → 200 | ✅ | V2 마이그레이션의 checksum 이 실제로 판정에 쓰인다 |
+| §5 테스트 | 23건 통과 | ✅ | 5 + 12 + 6 |
+
+부수적으로 확인된 것:
+
+- **3,581 이라는 숫자의 근거**: MySQL 은 JSON 을 완전 압축(`,` `:`)이 아니라 **`", "` / `": "` 형식**으로 출력한다. 원본을 그 형식으로 재직렬화하면 정확히 3,581 바이트다 (완전 압축이면 3,240). 즉 줄어든 것은 들여쓰기·줄바꿈뿐이고 구분자 뒤 공백은 남는다.
+- PowerShell 5.1 의 `Invoke-WebRequest` 는 첫 호출에서 "스크립트 실행 위험" 보안 경고를 띄운다. `A`(모두 예)를 고르거나 `-UseBasicParsing` 을 붙이면 된다.
+- 409 응답의 본문이 PowerShell 에서 빈 줄로 보였다. `$_.ErrorDetails.Message` 가 채워지지 않은 것이며, 본문 자체는 `{"code":"DUPLICATE",...}` 가 맞다 — `UserApiTest` 와 `GameDefinitionApiTest` 가 `jsonPath("$.code")` 로 검증한다.

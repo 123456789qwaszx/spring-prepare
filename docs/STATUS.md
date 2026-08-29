@@ -1,54 +1,79 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-08-29 — **M0 검증됨.** M0~M9 계획서 1차 점검 완료.
+> 마지막 갱신: 2026-08-29 — **M1 검증됨.** M0~M9 2차 점검 완료.
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
 
 | M | 이름 | 상태 | 계획서 | 검증 문서 | 비고 |
 |---|---|---|---|---|---|
-| M0 | 접속 확인 | **검증됨** (08-29) | [plans/M0.md](plans/M0.md) | [M0-check.md](M0-check.md) | 커밋만 남음. 확인된 사실은 M0.md §7-1 |
-| M1 | 콘텐츠 수입·배포 | **작성됨** (08-29) | [plans/M1.md](plans/M1.md) | [M1-check.md](M1-check.md) | D-006(JSON 유지), D-007(definition checksum). 실행 검증 대기 |
+| M0 | 접속 확인 | **검증됨** (08-29) | [plans/M0.md](plans/M0.md) | [M0-check.md](M0-check.md) | 커밋 완료. 확인된 사실 F1~F8 |
+| M1 | 콘텐츠 수입·배포 | **검증됨** (08-29) | [plans/M1.md](plans/M1.md) | [M1-check.md](M1-check.md) | 커밋만 남음. 확인된 사실 F9~F15 |
 | M2 | 회차·세이브 업로드/복구 | 대기 | [plans/M2.md](plans/M2.md) | — | 착수 시 PLAN#2 (슬롯 수) 결정 |
-| M3 | 선택 이력·이벤트 로그 | 대기 | [plans/M3.md](plans/M3.md) | — | 시간대 D-008. 출발점은 M0 F8 |
+| M3 | 선택 이력·이벤트 로그 | 대기 | [plans/M3.md](plans/M3.md) | — | 시간대 D-008. 배치 도구는 M1에서 검증됨 |
 | M4 | 멱등성과 충돌 | 대기 | [plans/M4.md](plans/M4.md) | — | 핵심 학습. 착수 시 PLAN#3 결정 |
-| M5 | 조회와 집계 | 대기 | [plans/M5.md](plans/M5.md) | — | EXPLAIN 기록 → M5-explain.md |
-| M6 | 마감 | 대기 | [plans/M6.md](plans/M6.md) | — | PLAN#4, #5 결정. Flyway 근거는 M0에서 확보 |
+| M5 | 조회와 집계 | 대기 | [plans/M5.md](plans/M5.md) | — | 인덱스 마이그레이션은 V3 (V2는 M1이 씀) |
+| M6 | 마감 | 대기 | [plans/M6.md](plans/M6.md) | — | PLAN#4, #5. Flyway 근거가 M1에서 크게 늘었다 |
 | M7 | Unity 저장 포트 | 대기 | [plans/M7.md](plans/M7.md) | — | Unity 레포 작업 |
 | M8 | Unity 복구·충돌 UI | 대기 | [plans/M8.md](plans/M8.md) | — | Unity 레포 작업 |
 | M9 | 선택 과제 | 대기 | [plans/M9.md](plans/M9.md) | — | |
 
 ## 지금
 
-- 위치: **M1 작성 완료, 실행 검증 대기.** M0는 검증됨(커밋만 남음).
-- Claude가 반영한 것 (M1): `common/Checksum`, `content/` 12개(레포지토리 2·서비스 2·컨트롤러 2·record 6), `db/migrations/V2__gamedef_checksum.sql`, 테스트 3개(`ChecksumTest`·`ChapterContentApiTest`·`GameDefinitionApiTest`), `DbCleaner` 확장, 샘플 JSON 복사, `M1-check.md`.
-- 아미야가 할 일:
-  1. **M1-check.md §0 — `V2` 마이그레이션을 `game`과 `game_test` 양쪽에 적용** (이걸 안 하면 definition 테스트가 전부 깨진다)
-  2. §2 bootRun → §3 API 시나리오 → §4 Workbench → §5 테스트 21건 → §6 결과 기록
-  3. 커밋 (M0 3개 + M1 1개)
+- 위치: **M1 종료.** 완료 기준 7개 + 자동 테스트 23건 통과 (M1-check.md §6).
+- 남은 일: 아미야가 M1 커밋 (문서 갱신 포함).
+- 그다음: M2 착수 전 **PLAN#2 결정**(슬롯 개수 제한, 권장 3).
+
+## 다음 M을 시작하기 전에 필요한 것 (M2)
+
+| # | 항목 | 누가 |
+|---|---|---|
+| 1 | PLAN#2 결정: 회차당 슬롯 개수 제한 (권장 3) | 아미야 |
+| 2 | 없음 — 샘플 데이터도 스키마도 이미 준비돼 있다 | — |
 
 ## 점검 이력
 
-### 2026-08-29 — M0 종료 후 M0~M9 1차 점검
+### 2026-08-29 — M1 종료 후 M0~M9 2차 점검
 
-M0에서 확인된 사실(M0.md §7-1 F1~F8)을 뒤 M의 전제와 대조한 결과, **계획의 구조를 바꿀 만한 어긋남은 없었다.** 반영한 것:
+M1에서 확인된 사실(M1.md §7-1 F9~F15)을 뒤 M의 전제와 대조했다. **이번에도 계획의 구조를 바꿀 만한 어긋남은 없었다.** 다만 M0 때와 달리 **실제로 터진 문제 하나**와 **뒤 M의 전제를 굳혀 준 사실 하나**가 있었다.
+
+**터진 것 — R4 스키마 드리프트 (ANALYSIS §4.1)**
+
+`game`에 테이블이 `users` 하나뿐이었다. M0는 `users`만 써서 완료 기준 7개를 전부 통과하고도 드러나지 않았고, M1의 `ALTER TABLE`에서 `Error 1146`으로 터졌다. 여기서 두 가지가 밝혀졌다.
+
+- `schema.sql`은 **재실행 불가능한 스크립트**다 (`IF NOT EXISTS` 없음). 복구에 별도의 손 SQL이 필요했다.
+- **선행 조건 확인은 실패가 조용하다.** 완료 기준과 달리, 확인을 건너뛰어도 그 M은 통과한다.
+
+→ 대응: 이후 M의 선행 조건에는 확인 쿼리와 기대 출력을 함께 적는다. 근본 해결은 M6 Flyway.
+
+**굳혀진 것 — 배치 INSERT의 예외 번역 (F10)**
+
+배치 INSERT의 PK/UNIQUE 위반도 단건과 똑같이 `DuplicateKeyException` → 409로 번역된다. M3의 "같은 seq 재전송은 409로 끝난다", M4의 "UNIQUE가 재전송을 흡수한다"가 이 사실 위에 서 있었는데, 이제 추측이 아니라 확인된 것이다.
 
 | 문서 | 반영 |
 |---|---|
-| plans/M0.md | 작업 표·완료 기준 `검증됨`, §7-1 "확인된 사실 F1~F8" 신설 |
-| plans/M1.md | 선행 조건 3건 해소 표시(M0 통과, `game_test`에 콘텐츠 테이블 이미 존재, `NamedParameterJdbcTemplate` 자동 등록 확인). Jackson 3 import를 소스 확인 결과로 확정. `DbCleaner` 확장 순서 명시 |
-| plans/M3.md | 시간대 결정(D-008)의 출발점을 M0 F8로 명시 — "지금 DB는 KST를 담는 DATETIME" |
-| plans/M6.md | Flyway(PLAN#5) 근거에 M0의 수동 2회 적용 경험 추가 |
-| ANALYSIS.md | R1·R2·R3 종결, R4 현실화, R6(코드량 증가 시 무컴파일 작성 비용) 신설 |
-| M0-check.md | §6 결과표 작성 |
+| plans/M0.md | M0-6 `검증됨`. §7-1 아래에 "선행 조건 확인은 자동으로 드러나지 않는다" 교훈 추가 |
+| plans/M1.md | 작업 표·완료 기준 `검증됨`, §7-1 "확인된 사실 F9~F15" 신설 |
+| plans/M2.md | 선행 조건 3건 해소 표시. F11(스냅샷도 37% 정규화), `DbCleaner` 확장 순서 명시 |
+| plans/M3.md | 배치 도구가 M1에서 검증됐음, C6에 F10 근거 추가 |
+| plans/M6.md | Flyway 근거를 "불편"에서 "실제 장애"로 격상, 해결해야 할 두 가지(자동 적용 + 이력 추적) 명시 |
+| ANALYSIS.md | R5 해소, R6 하향, §4.1(R4가 터진 방식)·§4.2(무컴파일 작성의 성립 조건) 신설 |
+| DECISIONS.md | D-006·D-007 사후 결과 확인 |
+| M1-check.md | §6 결과표, 테스트 개수 정정(21→23), 3,581바이트의 정확한 근거 |
 
 바꾸지 않은 것과 이유:
-- **M2·M4·M5·M7·M8·M9**: M0가 건드리지 않은 영역이라 갱신할 사실이 없다. 계획을 "손봐야 할 것 같아서" 손보지 않는다.
-- **PLAN.md**: 정본은 그대로 둔다. M0는 계획대로 끝났고 계획 자체가 틀린 곳은 없었다.
-- **D-004(M0부터 Service 계층·ErrorResponse)**: 실전에서 검증됨 — 400이 두 종류(`BAD_REQUEST` / `CONSTRAINT_VIOLATION`)로 갈리는 것이 실제로 유용했다. M6의 "에러 형식 통일"은 예상대로 누락 케이스 채우기만 남는다.
+
+- **M4·M5·M7·M8·M9**: M1이 건드리지 않은 영역. M4는 F10이 전제를 굳혀 줬을 뿐 계획 자체는 그대로다.
+- **PLAN.md**: 정본은 그대로. M1도 계획대로 끝났다. 단 PLAN M1 완료 기준의 "diff 0"은 D-006에 따라 "파싱 후 트리 비교"로 읽는다 — PLAN을 고치지 않고 결정 기록이 해석을 담당한다.
+- **`schema.sql`**: 재실행 불가라는 약점을 알았지만 고치지 않는다. DDL 정본이고, 멱등성은 M6 Flyway가 가져갈 문제다.
+
+### 2026-08-29 — M0 종료 후 M0~M9 1차 점검
+
+M0에서 확인된 사실(M0.md §7-1 F1~F8)을 뒤 M의 전제와 대조. 구조를 바꿀 어긋남 없음. plans/M1(선행 조건·Jackson 3 import), plans/M3(시간대 출발점), plans/M6(Flyway 근거), ANALYSIS(R1~R3 종결, R4 현실화, R6 신설), M0-check(§6 결과표)에 반영.
 
 ## 이력
 
 - 2026-08-28: 분석(ANALYSIS.md), 결정 D-001~D-005, 계획서 M0~M9 작성. M0 구현.
-- 2026-08-29: M0 실행 검증 통과(빌드·API·테스트 6/6). 문서 갱신, M0~M9 1차 점검.
-- 2026-08-29: M1 착수. 결정 D-006·D-007. 구현·테스트·M1-check 작성. 구현 전 Jackson 3 / Spring 7 API를 소스로 확인 — `asText()`·`textValue()`가 deprecated(→ `asString()`·`stringValue()`), `JacksonException`이 unchecked, `StringHttpMessageConverter` 기본 charset이 ISO-8859-1이나 `application/json`에는 UTF-8 예외 규칙.
+- 2026-08-29: M0 실행 검증 통과(빌드·API·테스트 6/6). 커밋. M0~M9 1차 점검.
+- 2026-08-29: M1 착수. 결정 D-006·D-007. 구현 전 Jackson 3 / Spring 7 API를 소스로 대조 — `asText()`·`textValue()`가 deprecated(→ `asString()`·`stringValue()`), `JacksonException`이 unchecked, `StringHttpMessageConverter` 기본 charset이 ISO-8859-1이나 `application/json`에는 UTF-8 예외 규칙.
+- 2026-08-29: M1 실행 검증 통과(테스트 23건, 수동 시나리오 전부). `game` 스키마 드리프트 복구. M0~M9 2차 점검.
