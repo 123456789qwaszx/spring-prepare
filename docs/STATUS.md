@@ -8,7 +8,7 @@
 | M | 이름 | 상태 | 계획서 | 검증 문서 | 비고 |
 |---|---|---|---|---|---|
 | M0 | 접속 확인 | **검증됨** (08-29) | [plans/M0.md](plans/M0.md) | [M0-check.md](M0-check.md) | 커밋만 남음. 확인된 사실은 M0.md §7-1 |
-| M1 | 콘텐츠 수입·배포 | 대기 | [plans/M1.md](plans/M1.md) | — | 착수 시 PLAN#1 (JSON vs LONGTEXT) 결정. 샘플 JSON 확보 필요 |
+| M1 | 콘텐츠 수입·배포 | **작성됨** (08-29) | [plans/M1.md](plans/M1.md) | [M1-check.md](M1-check.md) | D-006(JSON 유지), D-007(definition checksum). 실행 검증 대기 |
 | M2 | 회차·세이브 업로드/복구 | 대기 | [plans/M2.md](plans/M2.md) | — | 착수 시 PLAN#2 (슬롯 수) 결정 |
 | M3 | 선택 이력·이벤트 로그 | 대기 | [plans/M3.md](plans/M3.md) | — | 시간대 D-008. 출발점은 M0 F8 |
 | M4 | 멱등성과 충돌 | 대기 | [plans/M4.md](plans/M4.md) | — | 핵심 학습. 착수 시 PLAN#3 결정 |
@@ -20,17 +20,12 @@
 
 ## 지금
 
-- 위치: **M0 종료 직전.** 완료 기준 7개 전부 통과 (M0-check.md §6), 자동 테스트 6/6.
-- 남은 일: 아미야가 커밋 3개(환경 정정 / 문서 / M0 구현 + 이번 문서 갱신).
-- 그다음: M1 착수 전 **PLAN#1 결정**과 **샘플 JSON 확보**.
-
-## 다음 M을 시작하기 전에 필요한 것 (M1)
-
-| # | 항목 | 누가 |
-|---|---|---|
-| 1 | PLAN#1 결정: `chapter_contents.body`를 `JSON`으로 둘 것인가 `LONGTEXT`로 바꿀 것인가 (권장: JSON) | 아미야 |
-| 2 | `qwer.progression.json`을 `src/test/resources/content/`에 복사 — Unity 레포 `Assets/@Dialogue/ChapterProgression/` | 아미야 (로컬에 Unity 레포가 있으면 복사, 없으면 Claude가 프로젝트 동기화본에서 꺼내 씀) |
-| 3 | `game.definition.json` 샘플 존재 여부 확인 — 없으면 M1은 챕터만 하고 definition은 뒤로 미룰지 결정 | 아미야 |
+- 위치: **M1 작성 완료, 실행 검증 대기.** M0는 검증됨(커밋만 남음).
+- Claude가 반영한 것 (M1): `common/Checksum`, `content/` 12개(레포지토리 2·서비스 2·컨트롤러 2·record 6), `db/migrations/V2__gamedef_checksum.sql`, 테스트 3개(`ChecksumTest`·`ChapterContentApiTest`·`GameDefinitionApiTest`), `DbCleaner` 확장, 샘플 JSON 복사, `M1-check.md`.
+- 아미야가 할 일:
+  1. **M1-check.md §0 — `V2` 마이그레이션을 `game`과 `game_test` 양쪽에 적용** (이걸 안 하면 definition 테스트가 전부 깨진다)
+  2. §2 bootRun → §3 API 시나리오 → §4 Workbench → §5 테스트 21건 → §6 결과 기록
+  3. 커밋 (M0 3개 + M1 1개)
 
 ## 점검 이력
 
@@ -56,3 +51,4 @@ M0에서 확인된 사실(M0.md §7-1 F1~F8)을 뒤 M의 전제와 대조한 결
 
 - 2026-08-28: 분석(ANALYSIS.md), 결정 D-001~D-005, 계획서 M0~M9 작성. M0 구현.
 - 2026-08-29: M0 실행 검증 통과(빌드·API·테스트 6/6). 문서 갱신, M0~M9 1차 점검.
+- 2026-08-29: M1 착수. 결정 D-006·D-007. 구현·테스트·M1-check 작성. 구현 전 Jackson 3 / Spring 7 API를 소스로 확인 — `asText()`·`textValue()`가 deprecated(→ `asString()`·`stringValue()`), `JacksonException`이 unchecked, `StringHttpMessageConverter` 기본 charset이 ISO-8859-1이나 `application/json`에는 UTF-8 예외 규칙.

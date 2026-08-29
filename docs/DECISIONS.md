@@ -58,13 +58,39 @@
 - 결정: Service에서 `username`/`password` 공백 검사만 `if`로 하고 `BadRequestException` → 400. 길이 초과는 DB 제약(`VARCHAR(30)`)에 맡겨 `DataIntegrityViolationException` → 400으로 본다 — "DB 제약이 애플리케이션 밖에서 동작한다"는 M0 목표를 눈으로 보기 위해 **일부러** 앱에서 막지 않는다.
 - 결과: M6에서 `spring-boot-starter-validation` 도입 여부 재검토.
 
+## D-006. `chapter_contents.body`는 MySQL `JSON` 타입을 유지한다 (PLAN#1)
+
+- 상태: **결정됨** (2026-08-29, 아미야)
+- 배경: PLAN §5 열린 결정 #1. 실측하니 샘플(`qwer.progression.json`) 5,686바이트가 `JSON` 컬럼에서 약 3,240바이트로 줄어든다 — 공백·들여쓰기 제거와 키 순서 정규화. 즉 **바이트 동일 보존은 불가능**하다.
+- 선택지:
+  1. **`JSON` 유지** — 잘못된 JSON을 DB가 거부(검증을 공짜로), M5의 `JSON_EXTRACT`/`JSON_TABLE`이 자연스러움, 저장 공간 절약.
+  2. `LONGTEXT`로 변경 — 바이트 그대로. 대가: M5마다 `CAST(body AS JSON)`, 인덱스 불가, 잘못된 JSON도 저장됨, 마이그레이션 필요.
+- 결정: **1. `JSON` 유지.**
+- 판단 근거: 클라(Unity)는 이 파일을 파싱해서 쓰므로 바이트 동일이 필요 없다. 반면 M5의 집계는 `body`를 JSON으로 다루는 것이 전제다. **누가 이 데이터를 어떻게 쓰는지**가 컬럼 타입을 정한다 — "원본 보존"이라는 말의 어감이 아니라.
+- 결과:
+  - PLAN M1 완료 기준의 "diff 0"을 **파싱 후 트리 비교**로 바꾼다. 테스트 `내려받은_본문은_바이트는_달라도_의미는_같다()`가 그것이다.
+  - `checksum`은 **업로드 원본 바이트** 기준이라 다운로드본을 다시 해싱하면 값이 다르다. schema.sql 주석대로 재수입 방지 전용이며, 클라의 무결성 검증에는 쓸 수 없다. 클라가 "서버 것이 바뀌었나"를 알아야 하면 `version`을 본다.
+  - M2의 `save_slots.snapshot`도 같은 정책을 따른다 (같은 JSON 컬럼).
+
+## D-007. `game_definitions`에 `checksum` 컬럼을 마이그레이션으로 추가한다
+
+- 상태: **결정됨** (2026-08-29, 아미야)
+- 배경: PLAN M1은 `POST /content/definition`이 재수입 시 200을 반환하라고 하는데, `schema.sql` v1의 `game_definitions`에는 `checksum` 컬럼이 없다(`chapter_contents`에는 있다). **PLAN.md와 schema.sql이 어긋난 자리**다. 실물 `game.definition.json`도 아직 Unity 레포에 없다.
+- 선택지: (1) 마이그레이션으로 컬럼 추가 (2) definition은 멱등성 없이(매번 version++) (3) definition을 M1에서 제외.
+- 결정: **1.** `db/migrations/V2__gamedef_checksum.sql`.
+- 판단 근거: 같은 개념(콘텐츠 재수입)에 두 규칙을 두면 나중에 어느 쪽이 맞는지 매번 확인해야 한다. 그리고 PLAN §3이 정한 "스키마 변경은 마이그레이션으로"를 여기서 처음 실천한다 — 규칙은 처음 쓸 때 세워야 지켜진다. 실물 파일이 없어도 구현에 지장이 없는 이유는 **서버가 definition을 해석하지 않기 때문**이고(PLAN 1.4), 그 사실이 설계가 맞았다는 신호이기도 하다.
+- 결과:
+  - `schema.sql`은 고치지 않는다. 새 환경은 `schema.sql` → `V2__…` 순서.
+  - `game`과 `game_test` 양쪽에 수동 적용 필요 → PLAN#5(Flyway) 근거 축적.
+  - M5의 첫 인덱스 마이그레이션은 `V2`가 아니라 **`V3`**가 된다.
+
 ---
 
 ## 열린 결정 (PLAN §5에서 아직 안 정한 것)
 
 | PLAN# | 결정 | 기본 권장 | 결정 시점 | 상태 |
 |---|---|---|---|---|
-| 1 | `body` 컬럼 JSON vs LONGTEXT | JSON, diff는 의미 비교 | M1 착수 | 미결 |
+| 1 | `body` 컬럼 JSON vs LONGTEXT | JSON, diff는 의미 비교 | M1 착수 | **D-006으로 해소** |
 | 2 | 슬롯 개수 제한 | 3 | M2 착수 | 미결 |
 | 3 | 요청 UUID 멱등 키 | choices 기반 시작 | M4 착수 | 미결 |
 | 4 | `event_log` UNIQUE 범위 | (a) 회차 내 1회 | M6 | 미결 |

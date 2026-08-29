@@ -13,13 +13,18 @@ import java.util.List;
  * DELETE 는 느리지만 테스트 규모에선 차이가 없고, 자식 → 부모 순서를 코드에 적어 두면 FK 방향이 그대로 드러난다.
  *
  * 마일스톤마다 테이블이 늘면 이 목록만 갱신한다. 순서 규칙: 참조하는 쪽(자식)이 먼저.
- * Spring 빈이 아니라 평범한 클래스다 — 테스트에서 new 로 만든다. 테스트 지원 코드에 컴포넌트 스캔을 태우지 않는다.
+ * Spring 빈이 아니라 평범한 클래스다 — 테스트에서 new 로 만든다.
  */
 public final class DbCleaner {
 
-    // 자식 → 부모. 지금은 M0 범위. M1 에서 chapter_episodes, chapter_contents, game_definitions 가 앞에 붙는다.
+    // 자식 → 부모. M1 까지의 범위.
+    // chapter_episodes 는 ON DELETE CASCADE 라 부모만 지워도 되지만,
+    // 순서를 명시해 FK 방향이 눈에 보이게 둔다. M2 에서 save_slots·devices·playthroughs 가 앞에 붙는다.
     private static final List<String> TABLES_CHILD_FIRST = List.of(
-            "devices",       // → users
+            "chapter_episodes",   // → chapter_contents
+            "chapter_contents",
+            "game_definitions",   // 참조 없음
+            "devices",            // → users
             "users"
     );
 
