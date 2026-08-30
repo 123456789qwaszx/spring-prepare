@@ -51,6 +51,7 @@
 - 판단 근거: 규약은 첫 코드에서 세워야 지켜진다. M1부터 트랜잭션이 Service에 붙는데 M0만 다른 모양이면 "M0는 예외"라는 습관이 생긴다. 반면 M0의 "하지 않는 것"(로그인·해시·토큰)은 그대로 하지 않는다 — 이것은 범위 확장이 아니라 **형태 통일**이다.
 - 결과: `common/ErrorResponse`, `common/NotFoundException`, `common/BadRequestException`, `common/GlobalExceptionHandler`. `DataIntegrityViolationException`(NOT NULL·길이·FK 위반) → 400, 그 하위인 `DuplicateKeyException` → 409. 핸들러 선택은 예외 계층상 가장 가까운 것이 이긴다.
 - **2026-08-29 (M4) 갱신 — `detail` 을 넓히지 않기로 했다.** M4 의 409 는 서버 슬롯 상태(**객체**)를 실어야 하는데 `ErrorResponse.detail` 은 `String` 이다. 선택지는 (a) `detail` 을 `Object` 로 넓힌다 (b) `ConflictResponse` 를 따로 둔다. **(b)** 를 골랐다 — 한 곳의 필요 때문에 **나머지 모든 에러 응답의 계약을 느슨하게 만들지 않는다.** 대가는 에러 형식이 둘이 된다는 것이고 M6 에서 통일한다. `code`·`message` 는 같은 이름으로 맞춰 두어 클라의 분기 방식은 바뀌지 않는다.
+- **2026-08-30 (M6 착수 전) 갱신 — "통일"의 의미를 확정했다.** M6 의 에러 형식 통일은 **단일 record 로 합치는 것이 아니라 공통 계약을 세우는 것**이다: 모든 4xx/5xx 는 `code`(클라 분기 키)와 `message` 를 가진다. 형식은 둘뿐이다 — `ErrorResponse{code, message, detail?:String}` 와 `ConflictResponse{code, message, current}`. M6 계획서 초안의 "409 요약은 `detail` 에" 는 이 갱신(M4) **이전**의 문장이 남아 있던 것이라 삭제했다 — `detail` 을 `Object` 로 넓히는 (a)안을 다시 여는 것이 아니다. M6 완료 기준도 같은 말로 고쳤다 (M6.md §7).
 
 ## D-005. M0 입력 검증은 수동 `if`로, Validation 스타터는 넣지 않는다
 
@@ -187,6 +188,13 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
     M4 가 choices 재전송을 `replayed` 로 흡수했듯, **이벤트도 "이미 있으면 빼고 넣기" 가 필요해진다** → M6 작업 목록.
     (기존 `existingEpisodeIds` 는 `(playthrough, content, episode)` 기준이라 새 UNIQUE 와 맞지 않는다 —
      `existingEventKeys(playthroughId, keys)` 가 필요하다.)
+  - **2026-08-30 (M6 착수 전) 갱신 — V4 는 한 문장이어야 한다.** `uk_event_once` 는
+    `fk_event_playthrough`(playthrough_id FK) 를 지탱하는 **유일한 선두 인덱스**다
+    (FK 용 자동 인덱스는 지탱할 인덱스가 이미 있으면 만들어지지 않는다). DROP 을 별도 문장으로 쓰면
+    1553(`Cannot drop index: needed in a foreign key constraint`) 이 난다. 새 UNIQUE 도
+    playthrough_id 선두라 **한 문장 안에서 교체하면 FK 가 끊길 틈이 없다**:
+    `ALTER TABLE event_log DROP KEY uk_event_once, ADD UNIQUE KEY uk_event_once (playthrough_id, event_key);`
+    V3 주석의 "FK 가 쓰는 인덱스였다면 얘기가 다르다" 가 여기서 현실이 됐다.
 
 ## D-012. Flyway 를 도입하고 `game` 을 다시 만든다 (PLAN#5)
 
@@ -222,6 +230,41 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
   - 절차: `game` drop → create → 앱 기동(Flyway 가 V1~V4 적용) → `seed.sql` 실행. `game_test` 도 같은 방식.
   - `docs/schema.sql` 은 **DDL 정본으로 남긴다.** 읽기용이고, 적용은 `V1__init.sql` 이 한다.
     두 파일이 같은 내용을 담게 되므로 **어느 쪽이 정본인지 M6-check 에 적어 둔다.**
+- **2026-08-30 (M6 착수 전) 갱신 둘.**
+  - **(1) V1 은 schema.sql "그대로"가 아니다** — 머리의 `CREATE DATABASE IF NOT EXISTS game;` / `USE game;`
+    두 줄을 **빼고** 옮긴다. 남기면 Flyway 가 `game_test` 를 마이그레이션하다 `USE game` 으로 갈아타
+    테이블은 전부 `game` 에 생기고 history 만 `game_test` 에 남는다 — R4 류의 조용한 드리프트를
+    도구 도입 첫날 만드는 셈이다. `seed.sql` 에 스키마 이름이 없는 것과 같은 이유다.
+    DB 자체는 사람이 만드므로 `CREATE DATABASE … CHARACTER SET utf8mb4 COLLATE utf8mb4_0900_ai_ci` 는
+    M6-check 의 재생성 절차로 옮긴다. "재실행 가능성 검토" 는 하지 않는다 — 한 번만 적용되는 것이
+    마이그레이션의 정의고, 그 한 번은 Flyway 가 보장한다.
+  - **(2) 마이그레이션 파일을 전부 쓴 뒤에 재생성한다.** 초안의 작업 순서는 재생성(M6-1b)이
+    V4·V5 작성보다 앞이라 같은 표의 "기동 시 V1~V5 적용" 과 모순이었다.
+    **파일 전부(V1 이동·V4·V5) → 재생성 한 번 → seed** 로 바로잡았다 (M6.md §4).
+    이 순서라야 V4 가 언제나 **빈 DB** 에 적용돼 기존 데이터 걱정이 없고, 기동도 한 번이다.
+
+## D-013. `/stats/**` 는 관리자 키로 보호한다
+
+- 상태: **결정됨** (2026-08-30, Claude 결정 — 아미야가 판단 위임. 이견 있으면 되돌림)
+- 배경: M6 초안의 보호 범위는 토큰(`/playthroughs/**`, `/users/{id}/**`)과 관리자 키(`/content/**` POST)뿐이다.
+  `GET /stats/events` 와 `GET /stats/chapters/{id}/choices` 는 어느 쪽에도 안 걸려 **M6 이 끝나도 완전 공개**로
+  남는다. 그런데 STATUS 6차 점검은 집계 API 를 "클라가 쓰지 않는다(관리자용)" 로 정리했고,
+  M9-3 관리자 화면도 `X-Admin-Key` 를 전제한다.
+- 선택지: (1) **지금 `X-Admin-Key` 로 묶는다** (2) 토큰으로 묶는다 (3) M9 까지 공개로 두고 기록만.
+- 결정: **1.**
+- 판단 근거:
+  - M6 의 목표가 "Unity 클라가 붙어도 되는 상태" 인데, 클라 계약에 없는 엔드포인트가 무인증으로
+    열려 있는 것은 그 정의와 어긋난다. 마감 M 에서 잡는 것이 맞다.
+  - 2(토큰)는 "로그인한 아무 유저나 전체 통계를 본다" 가 되어 용도와 안 맞는다.
+    유저용 요약(`/users/{id}/summary`)은 토큰 경로에 이미 들어가 본인 것만 보게 된다 —
+    유저용과 관리자용이 자연스럽게 갈린다.
+  - 비용이 거의 없다 — M6-7 의 `AdminKeyInterceptor` 에 경로 하나를 더하는 일이고,
+    M9-3 은 처음부터 이 전제 위에 선다.
+- 결과:
+  - `AdminKeyInterceptor` 담당: `/content/**` 는 **POST 만** (GET 은 클라 콘텐츠 다운로드라 공개 — M6 C5),
+    `/stats/**` 는 **전 메서드**.
+  - 완료 기준 추가: `X-Admin-Key` 없이 `GET /stats/events` → 401 (M6.md §7).
+  - M9-3 관리자 화면은 이 키를 그대로 쓴다.
 
 ---
 
