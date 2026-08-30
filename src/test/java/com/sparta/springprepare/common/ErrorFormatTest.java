@@ -6,6 +6,7 @@ import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -37,6 +38,10 @@ class ErrorFormatTest {
     @Autowired
     JdbcClient jdbc;
 
+    /** 아래 F44 테스트가 콘텐츠 수입 경로(관리자 키)를 지나가야 해서 필요하다. */
+    @Value("${app.admin-key}")
+    String adminKey;
+
     @BeforeEach
     void setUp() {
         new DbCleaner(jdbc).clean();
@@ -54,6 +59,23 @@ class ErrorFormatTest {
                 .andExpect(jsonPath("$.message").isNotEmpty())
                 // 파서 내부 문자열(위치·토큰)은 응답에 싣지 않는다 — 로그로만 간다
                 .andExpect(jsonPath("$.detail").doesNotExist());
+    }
+
+    @Test
+    void 서비스_층에서_파싱하는_경로의_깨진_JSON도_MALFORMED_JSON이다() throws Exception {
+        // F44 잔손질 (M7 착수 시 반영). 콘텐츠 수입은 본문을 byte[] 로 받아 서비스가 readTree 한다 —
+        // 컨버터 층을 지나치므로, M6 검증에서는 JacksonException 이 포괄 핸들러의 500 으로 새는 것이
+        // 실측됐다 (M6-check §6). 이제 컨버터 층과 같은 code 로 나간다 — 경로가 어디든 분기는 하나다.
+        mockMvc.perform(post("/content/chapters")
+                        .header("X-Admin-Key", adminKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"ChapterId\": \"broken"))     // 잘린 본문
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_JSON"));
+
+        // 500 이 아니었다는 것만으로는 부족하다 — 아무것도 저장되지 않았어야 한다.
+        Long count = jdbc.sql("SELECT COUNT(*) FROM chapter_contents").query(Long.class).single();
+        org.assertj.core.api.Assertions.assertThat(count).isZero();
     }
 
     @Test

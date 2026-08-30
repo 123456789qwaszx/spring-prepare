@@ -10,6 +10,7 @@ import org.springframework.http.converter.HttpMessageNotReadableException;
 import org.springframework.web.bind.annotation.ExceptionHandler;
 import org.springframework.web.bind.annotation.RestControllerAdvice;
 import org.springframework.web.method.annotation.MethodArgumentTypeMismatchException;
+import tools.jackson.core.JacksonException;
 
 /**
  * 예외 → HTTP 상태 번역을 한 곳에 모은다 (PLAN §2.5).
@@ -104,6 +105,25 @@ public class GlobalExceptionHandler {
     @ExceptionHandler(HttpMessageNotReadableException.class)
     public ResponseEntity<ErrorResponse> handleUnreadable(HttpMessageNotReadableException e) {
         log.debug("본문 파싱 실패: {}", e.getMessage());
+        return ResponseEntity.status(HttpStatus.BAD_REQUEST)
+                .body(ErrorResponse.of("MALFORMED_JSON", "요청 본문이 올바른 JSON 이 아닙니다."));
+    }
+
+    /**
+     * 서비스 층에서 파싱하다 터진 깨진 JSON → 400 (F44 잔손질, M7 착수 시 반영).
+     *
+     * 컨버터 층(@RequestBody 객체 바인딩)의 파싱 실패는 위의 HttpMessageNotReadableException 으로 잡히지만,
+     * 콘텐츠 수입처럼 본문을 byte[] 로 받아 **서비스가 직접 readTree 하는 경로**는 JacksonException 이
+     * 그대로 올라온다. M6 검증(M6-check §6)에서 이것이 포괄 핸들러의 500 으로 나가는 것이 실측됐다 —
+     * 형식(code·message)은 지켰지만 원인은 클라의 깨진 본문이라 의미는 400 이 맞다.
+     * code 를 컨버터 층과 같게 맞춰, 클라는 경로가 어디든 MALFORMED_JSON 하나로 분기한다.
+     *
+     * (writeValueAsString 쪽 실패도 같은 타입이지만, 방금 파싱해 든 JsonNode 를 되쓰는 경로라
+     *  실제로 터질 자리가 없다 — 터진다면 400 이 아니라 버그이고, 그때는 로그가 말해 준다.)
+     */
+    @ExceptionHandler(JacksonException.class)
+    public ResponseEntity<ErrorResponse> handleJackson(JacksonException e) {
+        log.debug("본문 파싱 실패(서비스 층): {}", e.getMessage());
         return ResponseEntity.status(HttpStatus.BAD_REQUEST)
                 .body(ErrorResponse.of("MALFORMED_JSON", "요청 본문이 올바른 JSON 이 아닙니다."));
     }
