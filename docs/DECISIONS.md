@@ -159,6 +159,70 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
   - `choices` 가 비면 판정하지 않고 조건부 UPDATE 로 넘어간다 → 낡은 base 면 자연히 409 가 난다. **별도 분기를 두지 않는다** — "판정 불가"를 코드가 특별 취급하지 않아도 결과가 맞는다.
   - **재검토 방아쇠**: M7에서 클라를 만들 때 빈-`choices` 재전송의 409 가 실제로 불편하면, UUID(3)를 M6 Flyway 마이그레이션과 함께 붙인다. 근거가 쌓인 뒤에 — Flyway 도입이 M0→M1에서 근거를 모아 결정된 것과 같은 방식이다.
 
+## D-011. `event_log` UNIQUE 를 "회차 내 EventKey당 1회" 로 좁힌다 (PLAN#4)
+
+- 상태: **결정됨** (2026-08-30, 아미야)
+- 배경: v1 스키마의 `uk_event_once (playthrough_id, event_key, chapter_content_id, episode_id)` 에는
+  **`chapter_content_id` 가 들어 있다.** 챕터를 개편해 v2 를 올리면 같은 회차에서 `ENDING_A` 가 **또** 기록된다.
+  M5 의 도달률 쿼리에 `COUNT(DISTINCT playthrough_id)` 가 있는 이유가 이것이다.
+- 선택지: (1) **`(playthrough_id, event_key)`** (2) 현행 유지 (3) `(playthrough_id, event_key, chapter_content_id)`
+- 결정: **1.**
+- 판단 근거:
+  - `event_log` 는 **[1] 영구 계층**이고, 영구 계층이 답하는 질문은 "이 회차에서 무슨 일이 있었나" 다.
+    **"어느 버전에서 봤나" 는 콘텐츠 창고의 관심사**이지 영구 계층의 관심사가 아니다.
+  - 플레이어 입장에서도 챕터가 개편됐다고 엔딩을 다시 봐야 하는 것은 이상하다.
+    해금 판정은 클라가 `event_log` 를 근거로 하는데(PLAN 1.4), 버전별로 쪼개져 있으면 클라가 매번 합쳐야 한다.
+  - 3 은 중간이라 어느 쪽 장점도 온전히 얻지 못한다.
+- 결과:
+  - **`V4__event_once_per_playthrough.sql`**: 기존 UNIQUE 드롭 → `(playthrough_id, event_key)` 로 재생성.
+    이름은 `uk_event_once` 를 그대로 쓴다 — "회차에서 한 번" 이라는 이름이 오히려 새 정의에 더 맞는다.
+  - **컬럼은 남긴다.** UNIQUE 에서 빼는 것이지 지우는 것이 아니다.
+    "어느 버전의 어느 에피소드에서 **처음** 봤나" 는 여전히 유용하고, M5 의 JOIN 이 그것을 쓴다.
+  - **마이그레이션 전에 중복을 확인해야 한다.** 기존 데이터에 `(playthrough_id, event_key)` 중복이 있으면 실패한다:
+    `SELECT playthrough_id, event_key, COUNT(*) FROM event_log GROUP BY 1,2 HAVING COUNT(*) > 1;` → 0행이라야 한다.
+  - M5 의 `COUNT(DISTINCT playthrough_id)` 는 **그대로 둔다.** 이제 중복이 불가능해졌지만,
+    쿼리가 제약에 기대지 않는 편이 낫다 (`event_reach.sql` 주석에 이미 그렇게 적혀 있다).
+  - **파생 효과 하나 — 409 가 더 자주 난다.** 버전을 올린 뒤의 재도달이 이제 막힌다.
+    지금 `EventLogRepository.insertAll` 은 중복이면 `DuplicateKeyException` → **요청 전체가 409** 다.
+    M4 가 choices 재전송을 `replayed` 로 흡수했듯, **이벤트도 "이미 있으면 빼고 넣기" 가 필요해진다** → M6 작업 목록.
+    (기존 `existingEpisodeIds` 는 `(playthrough, content, episode)` 기준이라 새 UNIQUE 와 맞지 않는다 —
+     `existingEventKeys(playthroughId, keys)` 가 필요하다.)
+
+## D-012. Flyway 를 도입하고 `game` 을 다시 만든다 (PLAN#5)
+
+- 상태: **결정됨** (2026-08-30, 아미야)
+- 배경: 근거가 **셋** 쌓였다.
+  - **M0**: `schema.sql` 을 `game`·`game_test` 에 손으로 두 번 적용.
+  - **M1**: 그 수작업이 실제로 터졌다 (ANALYSIS §4.1, R4) — `game` 에 테이블이 `users` 하나뿐이었고
+    M0 는 `users` 만 써서 완료 기준을 전부 통과하고도 드러나지 않았다. M1 의 `ALTER TABLE` 에서야 `Error 1146`.
+    게다가 `schema.sql` 은 `IF NOT EXISTS` 가 없어 **재실행이 불가능**했다(F14).
+  - **M5**: `V3__stats_indexes.sql` 을 다시 두 DB 에 손으로. 마이그레이션이 둘이 되면서
+    **"어디까지 적용했나" 를 사람이 기억해야 하는 상태**가 됐다.
+- 선택지(도입 여부 + 기존 `game` 처리): (1) **도입 + `game` 재생성** (2) 도입 + `baseline-version=3` (3) 도입 안 함
+- 결정: **1.**
+- 판단 근거:
+  - `baseline` 은 **"여기까지는 적용됐다고 믿어라"** 다. 검증이 아니라 신뢰다.
+    **M1 의 R4 가 정확히 "믿었는데 아니었던" 사고**였고, baseline 은 같은 종류의 신뢰를 요구한다.
+    믿을 근거가 부족해서 도구를 들이는 마당에, 도구를 들이는 첫 단계에서 다시 믿는 것은 앞뒤가 안 맞는다.
+  - **재생성의 비용이 거의 없다.** `db/seed.sql` 이 있어 데이터 복구가 한 번의 실행이다.
+    M5 에서 seed 를 만든 것이 여기서 값을 한다 — 그때는 집계 학습용이었는데 지금은 **환경 재현 수단**이다.
+  - 그러고 나면 `game` 과 `game_test` 가 **같은 경로로 만들어진 상태**가 된다. 그것이 드리프트가 없다는 뜻이다.
+- 결과:
+  - 의존성: `org.flywaydb:flyway-core` + **`org.flywaydb:flyway-mysql`** (Flyway 9+ 부터 MySQL 은 별도 모듈).
+    Boot 은 `spring-boot-starter-flyway` 라는 이름을 쓰지 않는다 — 첫 빌드에서 이름을 추측하지 않는다(PLAN §2.2).
+  - **위치를 옮긴다**: `db/migrations/` (프로젝트 루트) → **`src/main/resources/db/migration/`** (Flyway 기본 경로, 단수).
+    클래스패스라야 jar 에 포함돼 배포에서도 동작한다. PLAN §3 이 정한 경로와 다르지만
+    **PLAN 은 고치지 않고 이 기록이 해석을 담당한다** (D-006·D-008 과 같은 방식).
+    `db/seed.sql` 은 마이그레이션이 아니므로 `db/` 에 남는다.
+  - **`spring.flyway.encoding=UTF-8` 을 명시한다** (M5 §7-1 F35). 기본값에 맡기면 한국어 Windows 에서
+    MS949 로 읽어 한글이 깨진 채 들어가고, **SQL 문법도 행 수도 멀쩡해서 조용히 통과한다.**
+  - 마이그레이션 순서: `V1__init.sql`(= `schema.sql` 그대로) → `V2__gamedef_checksum.sql` →
+    `V3__stats_indexes.sql` → `V4__event_once_per_playthrough.sql`(D-011).
+    `schema.sql` v1 에는 V2·V3 의 변경이 없으므로 그대로 옮겨도 순서가 맞는다.
+  - 절차: `game` drop → create → 앱 기동(Flyway 가 V1~V4 적용) → `seed.sql` 실행. `game_test` 도 같은 방식.
+  - `docs/schema.sql` 은 **DDL 정본으로 남긴다.** 읽기용이고, 적용은 `V1__init.sql` 이 한다.
+    두 파일이 같은 내용을 담게 되므로 **어느 쪽이 정본인지 M6-check 에 적어 둔다.**
+
 ---
 
 ## 열린 결정 (PLAN §5에서 아직 안 정한 것)
@@ -168,8 +232,8 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
 | 1 | `body` 컬럼 JSON vs LONGTEXT | JSON, diff는 의미 비교 | M1 착수 | **D-006으로 해소** |
 | 2 | 슬롯 개수 제한 | 3 | M2 착수 | **D-008로 해소** (권장과 다른 결론) |
 | 3 | 요청 UUID 멱등 키 | choices 기반 시작 | M4 착수 | **D-010으로 해소** (권장과 같되, 판정 불가 시 200이 아니라 409) |
-| 4 | `event_log` UNIQUE 범위 | (a) 회차 내 1회 | M6 | 미결 |
-| 5 | Flyway | M6 도입 | M6 | 미결 |
+| 4 | `event_log` UNIQUE 범위 | (a) 회차 내 1회 | M6 | **D-011로 해소** (권장과 같음) |
+| 5 | Flyway | M6 도입 | M6 | **D-012로 해소** (도입 + `game` 재생성) |
 | 6 | Testcontainers | — | M0 | **D-002로 해소** |
 | — | 영속 시각의 시간대 (PLAN에 없던 항목, ANALYSIS §3.8에서 제기) | UTC | M3 착수 | **D-009로 해소** |
 
