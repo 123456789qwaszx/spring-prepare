@@ -161,6 +161,9 @@ function Call-Api {
         "{0}`n{1}" -f [int]$r.StatusCode, [Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray())
     } catch {
         $resp = $_.Exception.Response
+        # HTTP 응답이 아예 없는 예외(예: 헤더 값에 비ASCII → 전송 전 실패)는 그대로 던져서 원문을 보이게 한다.
+        # 실측(2026-08-31): 자리표시자 '<…의 값>' 이 헤더에 들어가자 .Response 가 null 이라 여기서 이중으로 넘어졌다.
+        if (-not $resp) { throw }
         $sr = New-Object System.IO.StreamReader($resp.GetResponseStream(), [Text.Encoding]::UTF8)
         $text = $sr.ReadToEnd(); $sr.Close()
         "{0}`n{1}" -f [int]$resp.StatusCode, $text
@@ -205,10 +208,9 @@ Call-Api POST "$BASE/auth/login" '{"username":"ghost","password":"wrong"}'
 Call-Api GET  "$BASE/users/$USER_ID/playthroughs"
 # 기대: 401 {"code":"UNAUTHORIZED",...}
 
-Call-Api POST "$BASE/users/$USER_ID/playthroughs" $null $AUTH
-$p = Invoke-WebRequest -Method POST -Uri "$BASE/users/$USER_ID/playthroughs" -Headers $AUTH -UseBasicParsing 2>$null
-# 위 Call-Api 가 만든 회차를 쓰자 — 목록에서 id 를 꺼낸다 (손으로 옮겨 적지 않는다):
-$PT = ((Invoke-WebRequest -Uri "$BASE/users/$USER_ID/playthroughs" -Headers $AUTH -UseBasicParsing).Content | ConvertFrom-Json)[0].id
+$p = Invoke-WebRequest -Method POST -Uri "$BASE/users/$USER_ID/playthroughs" -Headers $AUTH -UseBasicParsing
+$PT = ($p.Content | ConvertFrom-Json).playthroughId
+"PT=$PT"
 
 Call-Api PUT "$BASE/playthroughs/$PT/saves/1" "{""chapterId"":""qwer"",""chapterVersion"":1,""currentEpisodeId"":""EP01"",""snapshot"":$SNAP,""playSeconds"":10,""deviceKey"":""device-m6"",""baseRevision"":0}" $AUTH
 # 기대: 200, revision 1
@@ -228,12 +230,19 @@ Call-Api GET "$BASE/users/1/summary" $null $AUTH
 
 ### 3.5 관리자 키 (M6-7, D-013)
 
-```powershell
-Call-Api POST "$BASE/content/chapters" (Get-Content src\test\resources\content\qwer-events.progression.json -Raw)
-# 기대: 401 — 키 없음. (M0~M5 시절에는 누구나 올릴 수 있었다.)
+> ⚠ 파일은 **바이트 그대로**(`-InFile`) 보낸다 — M1-check 가 이미 세운 규칙인데 이 문서의 초안이
+> `Get-Content -Raw` 로 되돌렸다가 검증에서 잡혔다(§6). 문자열로 읽으면 PS 5.1 이 재인코딩하며
+> 한글 바이트를 깨뜨리고, 깨진 정도에 따라 checksum 이 어긋나거나(M1) JSON 자체가 부서진다(이번, §6).
 
-Call-Api POST "$BASE/content/chapters" (Get-Content src\test\resources\content\qwer-events.progression.json -Raw) $ADMIN
-# 기대: 201
+```powershell
+$FIXTURE_PATH = "src\test\resources\content\qwer-events.progression.json"
+
+Call-Api POST "$BASE/content/chapters" "x"
+# 기대: 401 — 키 없음. (M0~M5 시절에는 누구나 올릴 수 있었다. 본문은 검사 전에 키에서 끊기므로 아무거나.)
+
+$r = Invoke-WebRequest -Method POST -Uri "$BASE/content/chapters" -ContentType 'application/json' -InFile $FIXTURE_PATH -Headers $ADMIN -UseBasicParsing
+"$([int]$r.StatusCode)`n$([Text.Encoding]::UTF8.GetString($r.RawContentStream.ToArray()))"
+# 기대: 201, {"chapterId":"qwer-events","version":1,"episodeCount":8} (재실행이면 200 — 재수입 멱등)
 
 Call-Api GET "$BASE/content/chapters"
 # 기대: 200 — **GET 은 키 없이 공개다.** 클라가 콘텐츠를 내려받는 경로다 (C5).
@@ -241,7 +250,10 @@ Call-Api GET "$BASE/content/chapters"
 Call-Api GET "$BASE/stats/events"
 # 기대: 401 — 집계는 관리자용 (D-013).
 Call-Api GET "$BASE/stats/events" $null $ADMIN
-# 기대: 200, seed 기준 MILESTONE 75.0 / ENDING_A 40.0 / ENDING_B 20.0 (M5-check §3 그대로)
+# 기대: 200. reached 수는 seed 그대로 15 / 8 / 4.
+# ⚠ 비율(reachRate)은 검증 **순서**에 따라 다르다 — 분모가 "전체 회차"라서 §3.3 에서 만든
+#   회차가 이미 세어진다 (예: 21회차면 71.4/38.1/19.0). 분모가 는 것이지 집계가 틀린 게 아니다.
+#   §3.8 까지 끝나면 ENDING_A 의 reached 도 8→9 가 된다 — 같은 이유다.
 ```
 
 ### 3.6 에러 형식 (M6-8) — F20 의 마감
@@ -278,6 +290,7 @@ Call-Api PUT "$BASE/playthroughs/$PT/saves/3" "{""chapterId"":""qwer-events"",""
 
 ```sql
 -- Workbench: ENDING_A 는 이 회차에 한 행뿐이다.
+-- <PT> 는 꺾쇠까지 지우고 §3.3 이 출력한 숫자로 바꾼다 (예: … playthrough_id = 21 …).
 SELECT COUNT(*) FROM game.event_log WHERE playthrough_id = <PT> AND event_key = 'ENDING_A';  -- 1
 ```
 
@@ -293,18 +306,28 @@ SELECT COUNT(*) FROM game.event_log WHERE playthrough_id = <PT> AND event_key = 
 
 ## 5. 결과 기록
 
+**전부 통과 — 2026-08-31 새벽 (아미야).**
+
 | 항목 | 기대 | 결과 | 비고 |
 |---|---|---|---|
-| §1.3 flyway_schema_history | V1~V5, success 전부 1 | | |
-| §1.3 uk_event_once | (playthrough_id, event_key) 2행 | | |
-| §1.4 game_test 이력 | game 과 동일 | | |
-| §1.5 seed | pw_head 전부 `$2a$10$`, 이벤트 27 | | |
-| §2 자동 테스트 | 96건, `executed` | | |
-| §3.1 평문 없음 | `$2a$10$…` | | |
-| §3.2 로그인/실패 동일 본문 | 200 / 401·401 같은 본문 | | |
-| §3.3 401 → 200 | 토큰이 가른다 | | |
-| §3.4 남의 회차·남의 summary | 403 / 403 | | |
-| §3.5 관리자 키 | 401 → 201, GET 공개, stats 401→200 | | |
-| §3.6 에러 형식 | MALFORMED_JSON, NOT_FOUND | | |
-| §3.7 로그아웃 | 204 → 401 | | |
-| §3.8 이벤트 흡수 | acceptedEvents 1 → 0, 행 1개 | | |
+| §1.3 flyway_schema_history | V1~V5, success 전부 1 | ✅ | |
+| §1.3 uk_event_once | (playthrough_id, event_key) 2행 | ✅ | V4 의 한 문장 ALTER 가 FK 를 안 끊고 통과 |
+| §1.4 game_test 이력 | game 과 동일 | ✅ | 첫 `cleanTest test` 가 자동 적용 (F42) |
+| §1.5 seed | pw_head 전부 `$2a$10$`, 이벤트 27 | ✅ | |
+| §2 자동 테스트 | 96건, `executed` | ✅ **96/96** | 첫 실행 통과 — 무컴파일 작성 M0~M6 연속 |
+| §3.1 평문 없음 | `$2a$10$…` | ✅ | m6 의 해시 60자 확인 |
+| §3.2 로그인/실패 동일 본문 | 200 / 401·401 같은 본문 | ✅ | 한 글자까지 동일 |
+| §3.3 401 → 200 | 토큰이 가른다 | ✅ | PT=21, revision 1 |
+| §3.4 남의 회차·남의 summary | 403 / 403 | ✅ | 서비스 403 / 인터셉터 403 — 메시지로 층이 구분된다 |
+| §3.5 관리자 키 | 401 → 201, GET 공개, stats 401→200 | ✅ | 201 은 `-InFile` 로 (§6-2). stats 비율은 분모 21 로 71.4/38.1/19.0 — 정의대로 (§3.5 주석) |
+| §3.6 에러 형식 | MALFORMED_JSON, NOT_FOUND | ✅ | |
+| §3.7 로그아웃 | 204 → 401 | ✅ | "유효하지 않은 토큰" — 행 삭제 즉시 무효 |
+| §3.8 이벤트 흡수 | acceptedEvents 1 → 0, 행 1개 | ✅ | 409 없이 흡수. SQL COUNT = 1 |
+
+## 6. 부수적으로 확인된 것
+
+- **이 문서의 초안 결함 둘이 검증에서 잡혔다** — M3 의 "문서의 오류가 실행으로 잡혔다"(§5.1 기대표 정정)와 같은 계보다.
+  - **(1) §3.5 가 `Get-Content -Raw` 로 파일을 보내게 했다.** M1-check 가 이미 "`-InFile` 을 쓴다"고 세운 규칙의 위반이다. PS 5.1 이 BOM 없는 UTF-8 을 잘못 읽고 재인코딩해 한글 바이트를 깨뜨렸고, 이번엔 checksum 어긋남(M1 의 우려) 정도가 아니라 **JSON 구조 자체가 부서져** 서버의 `readTree` 가 JacksonException 을 던졌다. → §3.5 를 `-InFile` 로 정정.
+  - **(2) stats 기대값이 "seed 직후"를 가정했다.** 분모가 전체 회차라 §3.3 이 만든 회차가 세어져 75.0 이 아니라 71.4 가 나온다 — 집계는 정의대로 맞다. → 기대를 reached 수(15/8/4)로 바꾸고 주석 추가.
+- **위 (1) 이 뜻밖의 것을 실증했다**: 서비스 층 `readTree` 의 JacksonException 은 핸들러 목록에 없어 **포괄 핸들러의 500 `INTERNAL_ERROR`** 로 나간다. 형식(code·message)은 지켰다 — M6-8 이 일한 장면 — 그러나 원인은 클라의 깨진 본문이라 **의미상 400 `MALFORMED_JSON` 이 맞다.** 컨버터 층(@RequestBody 객체 바인딩)은 잡히는데, byte[] 로 받아 서비스에서 파싱하는 콘텐츠 수입 경로만 그물 밖이다. → plans/M6.md §9 잔손질로 기록 (F44).
+- **PS 5.1 은 헤더 값에 비ASCII 가 있으면 요청을 보내기 전에 예외를 던지고, 그 예외에는 `.Response` 가 없다.** 자리표시자 문자열('<…의 값>')이 그대로 헤더에 들어가며 발견됐다. Call-Api 의 catch 가 여기서 이중으로 넘어졌다 → §3.0 에 null 가드 추가. **서버는 그동안 한 번도 틀린 말을 하지 않았다** — 두 번의 "실패"(자리표시자, -Raw) 모두 클라이언트 쪽이었고, M3 의 PowerShell 한글 깨짐과 같은 교훈이다: 이상하면 읽는(보내는) 쪽부터 의심한다. Unity 의 UnityWebRequest 는 바이트를 그대로 다루므로 이 두 함정 모두 해당 없다 (M7 선행 조건 참조).
