@@ -242,6 +242,21 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
     V4·V5 작성보다 앞이라 같은 표의 "기동 시 V1~V5 적용" 과 모순이었다.
     **파일 전부(V1 이동·V4·V5) → 재생성 한 번 → seed** 로 바로잡았다 (M6.md §4).
     이 순서라야 V4 가 언제나 **빈 DB** 에 적용돼 기존 데이터 걱정이 없고, 기동도 한 번이다.
+- **2026-08-30 (M6 구현, 소스 대조) 갱신 둘 더.**
+  - **(3) Boot 4 에는 `spring-boot-starter-flyway` 가 있다.** "그런 스타터는 없다"(M6 계획서 초안의
+    자기 교정)는 Boot 3 까지의 사실이었고, 4.0 모듈화 때 생겼다 — boot 레포 v4.1.1 의
+    `starter/spring-boot-starter-flyway` 로 확인. 모듈화 때문에 이 스타터가 이제 **필요**하기도 하다:
+    자동 구성이 `spring-boot-autoconfigure` 한 덩어리가 아니라 `spring-boot-flyway` 모듈에 살고,
+    `flyway-core` 만 넣으면 그 모듈이 안 따라온다. 최종 좌표:
+    `implementation 'org.springframework.boot:spring-boot-starter-flyway'` + `runtimeOnly 'org.flywaydb:flyway-mysql'`
+    (관리 버전 Flyway 12.4.0). **"이름을 지어내지 않는다"의 교훈이 한 번 더 뒤집힌 자리** —
+    지난번엔 지어낸 이름이 없어서 틀렸고, 이번엔 없다고 믿은 이름이 생겨서 틀렸다.
+    양쪽 다 소스 대조가 잡았다.
+  - **(4) `spring.flyway.encoding` 의 기본값은 이미 UTF-8 이다** (Boot 의 `FlywayProperties` 소스
+    `private Charset encoding = StandardCharsets.UTF_8` 로 확인). "기본값에 맡기면 MS949"는
+    `@SqlConfig` 의 이야기(F35)였고 Flyway 에는 해당하지 않는다 — **F35 를 Flyway 로 일반화한 것이
+    과했다.** 명시는 그대로 유지한다: "이 파일들은 UTF-8" 을 설정에 적어 두는 값이 있고,
+    기본값이 바뀌어도 안전하다. 다만 근거를 "위험 회피"에서 "의도 문서화"로 고쳐 적는다.
 
 ## D-013. `/stats/**` 는 관리자 키로 보호한다
 
@@ -265,6 +280,19 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
     `/stats/**` 는 **전 메서드**.
   - 완료 기준 추가: `X-Admin-Key` 없이 `GET /stats/events` → 401 (M6.md §7).
   - M9-3 관리자 화면은 이 키를 그대로 쓴다.
+
+## D-014. M0~M5 가 미뤄 둔 잔여 결정 넷 — 일괄 마감 (M6-9)
+
+- 상태: **결정됨** (2026-08-30, Claude 결정 — 아미야 위임. 이견 있으면 되돌림)
+- 배경: M0 가 "M6 에서 다시 본다"로 미뤄 둔 항목들 + M3 점검이 넘긴 Content-Type 항목.
+  하나씩 절을 세울 무게가 아니라 표로 마감한다 — 미뤄 둔 것을 **잊지 않고 닫았다**는 기록이 목적이다.
+
+| # | 항목 | 결정 | 근거 |
+|---|---|---|---|
+| 1 | `spring.profiles.active=local` 이 커밋 파일에 있음 (ANALYSIS §3.6) | **유지** | 배포 환경이 없다. 생기는 날 실행 인자로 옮긴다 — 조건과 함께 주석으로 남아 있어 잊히지 않는다 |
+| 2 | `contextLoads` 의 프로필 (ANALYSIS §3.7) | **`@ActiveProfiles("test")` 로 고정** | 프로필 없이 두면 위 #1 때문에 이 "테스트"가 **개발 DB(game)** 에 붙는다. M6 부터는 Flyway 까지 물려 있어 컨텍스트만 띄워도 개발 DB 에 마이그레이션이 도는 셈이었다 — 테스트는 전부 game_test 만 본다 (D-002) |
+| 3 | Validation 스타터 (D-005) | **끝내 넣지 않는다** | 수동 if 가 M0~M6 전 구간에서 충분했고, 에러 메시지가 D-004 형식과 이미 정합이다. Bean Validation 은 M9 JPA 과제에서 엔티티와 함께 만나는 편이 학습 순서에 맞다 |
+| 4 | Location 절대 URI (M0) + 응답 Content-Type 편차 (M3 점검) | **상대 URI 유지, Content-Type 그대로** | 절대 URI 는 리버스 프록시 뒤에서 호스트를 짐작해야 한다 — 상대가 더 안전하다. Content-Type 편차(콘텐츠 배포만 charset 붙음)는 무해가 확인됐고(M3 §7), 고치면 원본 바이트 배포의 의도가 흐려진다. **"의도한 차이"로 결정하고 기록한다** — M6 계획서 §3-5 가 요구한 "한 번은 결정하고 넘어간다"의 답 |
 
 ---
 

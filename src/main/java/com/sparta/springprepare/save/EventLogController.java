@@ -1,7 +1,9 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.common.AuthInterceptor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RestController;
 
@@ -25,7 +27,8 @@ public class EventLogController {
     }
 
     @GetMapping
-    public List<EventLogItem> list(@PathVariable long playthroughId) {
-        return service.listEvents(playthroughId);
+    public List<EventLogItem> list(@PathVariable long playthroughId,
+                                   @RequestAttribute(AuthInterceptor.USER_ID_ATTRIBUTE) long authUserId) {
+        return service.listEvents(playthroughId, authUserId);
     }
 }

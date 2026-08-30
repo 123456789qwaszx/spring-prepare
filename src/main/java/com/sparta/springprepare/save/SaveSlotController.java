@@ -1,8 +1,10 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.common.AuthInterceptor;
 import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PutMapping;
+import org.springframework.web.bind.annotation.RequestAttribute;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -47,18 +49,21 @@ public class SaveSlotController {
     public SaveUploadResponse upsert(@PathVariable long playthroughId,
                                      @PathVariable int slotNo,
                                      @RequestParam(defaultValue = "false") boolean force,
+                                     @RequestAttribute(AuthInterceptor.USER_ID_ATTRIBUTE) long authUserId,
                                      @RequestBody SaveUploadRequest request) {
-        return service.upsert(playthroughId, slotNo, force, request);
+        return service.upsert(playthroughId, slotNo, force, authUserId, request);
     }
 
     @GetMapping
-    public List<SaveSlotSummary> list(@PathVariable long playthroughId) {
-        return service.list(playthroughId);
+    public List<SaveSlotSummary> list(@PathVariable long playthroughId,
+                                      @RequestAttribute(AuthInterceptor.USER_ID_ATTRIBUTE) long authUserId) {
+        return service.list(playthroughId, authUserId);
     }
 
     @GetMapping("/{slotNo}")
-    public SaveSlotDetail get(@PathVariable long playthroughId, @PathVariable int slotNo) {
-        return service.get(playthroughId, slotNo);
+    public SaveSlotDetail get(@PathVariable long playthroughId, @PathVariable int slotNo,
+                              @RequestAttribute(AuthInterceptor.USER_ID_ATTRIBUTE) long authUserId) {
+        return service.get(playthroughId, slotNo, authUserId);
     }
 
     /**
@@ -73,7 +78,8 @@ public class SaveSlotController {
     @GetMapping("/{slotNo}/choices")
     public List<ChoiceHistoryItem> choices(@PathVariable long playthroughId,
                                            @PathVariable int slotNo,
-                                           @RequestParam(defaultValue = "0") int afterSeq) {
-        return historyService.listChoices(playthroughId, slotNo, afterSeq);
+                                           @RequestParam(defaultValue = "0") int afterSeq,
+                                           @RequestAttribute(AuthInterceptor.USER_ID_ATTRIBUTE) long authUserId) {
+        return historyService.listChoices(playthroughId, slotNo, afterSeq, authUserId);
     }
 }

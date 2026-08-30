@@ -82,6 +82,9 @@
 SET SQL_SAFE_UPDATES = 0;
 
 -- ── 1. 정리 (자식 → 부모). DbCleaner 와 같은 순서다 ────────────────
+-- sessions 는 M6 에서 생겼다 (V5). users 를 참조하므로 users 보다 먼저 지운다.
+-- (token 이 PK 라 AUTO_INCREMENT 재설정은 필요 없다.)
+DELETE FROM sessions;
 DELETE FROM choice_history;
 DELETE FROM event_log;
 DELETE FROM save_slots;
@@ -105,12 +108,18 @@ ALTER TABLE choice_history   AUTO_INCREMENT = 1;
 ALTER TABLE event_log        AUTO_INCREMENT = 1;
 
 -- ── 2. 사용자 5명 (id 1~5) ────────────────────────────────────────
+-- 비밀번호는 전부 문자열 'seed-only' 의 BCrypt 해시다 (M6-3b).
+-- 평문을 넣으면 seed 를 심을 때마다 M6 완료 기준("SELECT password 에 평문 없음")이
+-- 깨지고, 테스트가 seed 사용자로 로그인할 수도 없다. 해시는 미리 계산해 박아 둔다 —
+-- BCrypt 검증은 해시 문자열 안의 cost(여기서는 10)를 따르므로 앱의 strength 설정과 무관하다.
+-- 다섯 명이 같은 해시인 것은 의도다: 같은 비밀번호 + 같은 salt 재사용이 아니라,
+-- 한 번 만든 해시 한 개를 다섯 행에 넣은 것뿐이다 (seed 는 결정적이어야 한다).
 INSERT INTO users (username, password, created_at) VALUES
-  ('amiya',  'seed-only', '2026-08-01 00:00:00'),
-  ('bailu',  'seed-only', '2026-08-01 00:00:00'),
-  ('chen',   'seed-only', '2026-08-01 00:00:00'),
-  ('dusk',   'seed-only', '2026-08-01 00:00:00'),
-  ('eyja',   'seed-only', '2026-08-01 00:00:00');
+  ('amiya',  '$2a$10$WCnXu2Sw.U/.ifaxfEYzA.alY7bEGCFyHmZTb4vFpyEkwP0NFv5g.', '2026-08-01 00:00:00'),
+  ('bailu',  '$2a$10$WCnXu2Sw.U/.ifaxfEYzA.alY7bEGCFyHmZTb4vFpyEkwP0NFv5g.', '2026-08-01 00:00:00'),
+  ('chen',   '$2a$10$WCnXu2Sw.U/.ifaxfEYzA.alY7bEGCFyHmZTb4vFpyEkwP0NFv5g.', '2026-08-01 00:00:00'),
+  ('dusk',   '$2a$10$WCnXu2Sw.U/.ifaxfEYzA.alY7bEGCFyHmZTb4vFpyEkwP0NFv5g.', '2026-08-01 00:00:00'),
+  ('eyja',   '$2a$10$WCnXu2Sw.U/.ifaxfEYzA.alY7bEGCFyHmZTb4vFpyEkwP0NFv5g.', '2026-08-01 00:00:00');
 
 -- ── 3. 기기 — 사용자당 1대. 회차 요약이 "어느 기기" 를 보여줄 재료 ──
 INSERT INTO devices (user_id, device_key, display_name, last_seen_at)

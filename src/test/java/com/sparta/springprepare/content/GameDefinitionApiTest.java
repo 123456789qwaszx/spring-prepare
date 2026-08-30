@@ -4,6 +4,7 @@ import com.sparta.springprepare.support.DbCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -44,6 +45,10 @@ class GameDefinitionApiTest {
     @Autowired
     MockMvc mockMvc;
 
+    /** M6-7 (D-013): 콘텐츠 POST 는 관리자 키가 필요하다. 값은 프로필 설정에서 읽는다. */
+    @Value("${app.admin-key}")
+    String adminKey;
+
     @Autowired
     JdbcClient jdbc;
 
@@ -57,7 +62,7 @@ class GameDefinitionApiTest {
 
     @Test
     void 첫_수입은_201_버전_1이다() throws Exception {
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.version").value(1));
 
@@ -67,10 +72,10 @@ class GameDefinitionApiTest {
     @Test
     void 같은_파일_재수입은_200이고_행이_늘지_않는다() throws Exception {
         // V2 마이그레이션으로 추가한 checksum 컬럼이 이 판정을 가능하게 한다 (D-007).
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
                 .andExpect(status().isCreated());
 
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1));
 
@@ -79,14 +84,14 @@ class GameDefinitionApiTest {
 
     @Test
     void 내용이_바뀌면_버전이_오른다() throws Exception {
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
                 .andExpect(status().isCreated());
 
         byte[] changed = """
                 { "SchemaVersion": 2, "Stats": [], "Unlocks": [] }
                 """.getBytes(StandardCharsets.UTF_8);
 
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(changed))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(changed))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.version").value(2));
 
@@ -95,7 +100,7 @@ class GameDefinitionApiTest {
 
     @Test
     void latest는_가장_높은_버전을_준다() throws Exception {
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(SAMPLE))
                 .andExpect(status().isCreated());
 
         MvcResult result = mockMvc.perform(get("/content/definition/latest"))
@@ -120,7 +125,7 @@ class GameDefinitionApiTest {
     void JSON_객체가_아니면_400이다() throws Exception {
         byte[] array = "[1, 2, 3]".getBytes(StandardCharsets.UTF_8);
 
-        mockMvc.perform(post("/content/definition").contentType(MediaType.APPLICATION_JSON).content(array))
+        mockMvc.perform(post("/content/definition").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(array))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 

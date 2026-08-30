@@ -31,6 +31,7 @@ public final class DbCleaner {
      * save_slots.device_id 가 devices 를 참조하므로 devices 를 먼저 지우면 실패한다.
      */
     private static final List<String> TABLES_CHILD_FIRST = List.of(
+            "sessions",           // M6 (V5). users 를 참조하므로 users 보다 앞 — 다른 자식과는 무관해 맨 앞에 둔다
             "choice_history",
             "event_log",
             "save_slots",

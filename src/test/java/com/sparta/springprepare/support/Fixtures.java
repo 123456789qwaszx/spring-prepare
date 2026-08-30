@@ -16,10 +16,24 @@ public final class Fixtures {
     private Fixtures() {
     }
 
+    /**
+     * 픽스처 사용자의 비밀번호 원문. AuthSupport 가 이 값으로 로그인한다 (M6).
+     */
+    public static final String TEST_PASSWORD = "test-only";
+
+    /**
+     * TEST_PASSWORD 의 BCrypt 해시 (M6-3 이후 users.password 는 해시다).
+     * cost 4 로 미리 계산해 박아 둔 값 — 검증(matches)은 해시 문자열 안의 cost 를 따르므로
+     * 앱의 strength 설정과 무관하게 항상 맞는다. 낮은 cost 인 이유는 테스트 로그인 속도뿐이다.
+     */
+    private static final String TEST_PASSWORD_HASH =
+            "$2a$04$4z9I7SMEKFgfBtFpoWsEYOZ.a9aZvYZQmkjkona//DqZRJgh/dJ1C";
+
     public static long insertUser(JdbcClient jdbc, String username) {
         KeyHolder keyHolder = new GeneratedKeyHolder();
-        jdbc.sql("INSERT INTO users (username, password) VALUES (:username, 'test-only')")
+        jdbc.sql("INSERT INTO users (username, password) VALUES (:username, :passwordHash)")
                 .param("username", username)
+                .param("passwordHash", TEST_PASSWORD_HASH)
                 .update(keyHolder);
         return keyHolder.getKey().longValue();
     }

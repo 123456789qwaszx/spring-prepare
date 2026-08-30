@@ -1,5 +1,6 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.support.AuthSupport;
 import com.sparta.springprepare.support.DbCleaner;
 import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
@@ -55,14 +56,16 @@ class SaveSlotApiTest {
 
     private long userId;
     private long playthroughId;
+    private String bearer;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         new DbCleaner(jdbc).clean();
         userId = Fixtures.insertUser(jdbc, "amiya");
         playthroughId = Fixtures.insertPlaythrough(jdbc, userId);
         Fixtures.insertChapter(jdbc, "qwer", 1);
         Fixtures.insertChapter(jdbc, "qwer", 2);
+        bearer = AuthSupport.login(mockMvc, "amiya");   // M6: 보호 경로
     }
 
     // ── revision ────────────────────────────────────────────────────
@@ -100,6 +103,7 @@ class SaveSlotApiTest {
     @Test
     void 없는_회차는_404다() throws Exception {
         mockMvc.perform(put("/playthroughs/{pid}/saves/{slotNo}", 999_999, 1)
+                        .header("Authorization", bearer)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(body("qwer", 1, "EP01", 0, "device-A")))
                 .andExpect(status().isNotFound());
@@ -112,7 +116,7 @@ class SaveSlotApiTest {
         mockMvc.perform(putSlot(1, body("qwer", 1, "EP02_01", 25, "device-A")))
                 .andExpect(status().isOk());
 
-        MvcResult result = mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1))
+        MvcResult result = mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.slotNo").value(1))
                 .andExpect(jsonPath("$.chapterId").value("qwer"))
@@ -138,7 +142,7 @@ class SaveSlotApiTest {
         mockMvc.perform(putSlot(1, body("qwer", 1, "EP01", 10, "device-A")))
                 .andExpect(status().isOk());
 
-        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].slotNo").value(1))
@@ -172,7 +176,7 @@ class SaveSlotApiTest {
         mockMvc.perform(putSlot(1, noDevice)).andExpect(status().isOk());
 
         // save_slots.device_id 가 NULL 이어도 목록에서 슬롯이 사라지면 안 된다 (LEFT JOIN 인 이유).
-        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].device").doesNotExist());
@@ -205,7 +209,7 @@ class SaveSlotApiTest {
                     .andExpect(status().isOk());
         }
 
-        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(4))
                 .andExpect(jsonPath("$[0].slotNo").value(1))
@@ -243,7 +247,7 @@ class SaveSlotApiTest {
 
     @Test
     void 없는_슬롯_조회는_404다() throws Exception {
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 3))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 3).header("Authorization", bearer))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
     }
@@ -256,7 +260,7 @@ class SaveSlotApiTest {
                 .andExpect(status().isOk());
 
         // 세이브는 chapter_id 가 아니라 특정 버전을 가리킨다 (schema.sql 주석).
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.chapterVersion").value(2))
                 .andExpect(jsonPath("$.revision").value(2));
@@ -267,6 +271,7 @@ class SaveSlotApiTest {
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder putSlot(
             int slotNo, String jsonBody) {
         return put("/playthroughs/{pid}/saves/{slotNo}", playthroughId, slotNo)
+                .header("Authorization", bearer)     // M6: 모든 세이브 API 는 토큰 필수
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }

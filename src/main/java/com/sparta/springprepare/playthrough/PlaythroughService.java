@@ -1,5 +1,6 @@
 package com.sparta.springprepare.playthrough;
 
+import com.sparta.springprepare.common.ForbiddenException;
 import com.sparta.springprepare.common.NotFoundException;
 import com.sparta.springprepare.user.UserRepository;
 import org.springframework.stereotype.Service;
@@ -48,9 +49,15 @@ public class PlaythroughService {
      * 같은 요청이 여러 번 와도 결과가 같은 편이 클라를 단순하게 만듬.
      */
     @Transactional
-    public PlaythroughEndResponse end(long playthroughId) {
+    public PlaythroughEndResponse end(long playthroughId, long authUserId) {
         Playthrough playthrough = playthroughRepository.findById(playthroughId)
                 .orElseThrow(() -> new NotFoundException("회차가 없습니다: id=" + playthroughId));
+
+        // 소유 검증 (M6-6). 존재 확인 뒤에 온다 — 없는 회차는 404, 남의 회차는 403 으로 갈라진다.
+        // (create·listByUser 는 경로가 /users/{id}/… 라 인터셉터가 이미 본인임을 보장했다 — 여기만 서비스 몫이다.)
+        if (!playthrough.userId().equals(authUserId)) {
+            throw new ForbiddenException("다른 사용자의 회차입니다: id=" + playthroughId);
+        }
 
         if (playthrough.endedAt() == null) {
             playthroughRepository.end(playthroughId);

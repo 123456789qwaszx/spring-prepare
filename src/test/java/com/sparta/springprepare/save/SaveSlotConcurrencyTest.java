@@ -1,5 +1,6 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.support.AuthSupport;
 import com.sparta.springprepare.support.DbCleaner;
 import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
@@ -69,15 +70,17 @@ class SaveSlotConcurrencyTest {
     JdbcClient jdbc;
 
     private long playthroughId;
+    private String bearer;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         new DbCleaner(jdbc).clean();
         long userId = Fixtures.insertUser(jdbc, "amiya");
         playthroughId = Fixtures.insertPlaythrough(jdbc, userId);
         long contentId = Fixtures.insertChapter(jdbc, "qwer", 1);
         Fixtures.insertEpisode(jdbc, contentId, "EP01", "");
         Fixtures.insertEpisode(jdbc, contentId, "EP02_01", "");
+        bearer = AuthSupport.login(mockMvc, "amiya");   // M6: 두 스레드가 같은 토큰을 쓴다 — 같은 사용자의 두 기기다
     }
 
     @Test
@@ -149,6 +152,7 @@ class SaveSlotConcurrencyTest {
 
     private MockHttpServletRequestBuilder putSlot(int slotNo, String jsonBody) {
         return put("/playthroughs/{pid}/saves/{slotNo}", playthroughId, slotNo)
+                .header("Authorization", bearer)     // M6: 토큰 필수
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }

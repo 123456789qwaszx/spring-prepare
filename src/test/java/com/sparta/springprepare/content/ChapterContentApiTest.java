@@ -4,6 +4,7 @@ import com.sparta.springprepare.support.DbCleaner;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -38,6 +39,10 @@ class ChapterContentApiTest {
     @Autowired
     MockMvc mockMvc;
 
+    /** M6-7 (D-013): 콘텐츠 POST 는 관리자 키가 필요하다. 값은 프로필 설정에서 읽는다. */
+    @Value("${app.admin-key}")
+    String adminKey;
+
     @Autowired
     JdbcClient jdbc;
 
@@ -56,7 +61,7 @@ class ChapterContentApiTest {
 
     @Test
     void 첫_수입은_201이고_색인이_노드_수만큼_생긴다() throws Exception {
-        mockMvc.perform(post("/content/chapters")
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey)
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(sample))
                 .andExpect(status().isCreated())
@@ -70,11 +75,11 @@ class ChapterContentApiTest {
 
     @Test
     void 같은_파일을_다시_올리면_200이고_행이_늘지_않는다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         // 정상 경로는 checksum 조회이지 UNIQUE 위반이 아니다 — 409 가 아니라 200 이어야 한다.
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.version").value(1))
                 .andExpect(jsonPath("$.episodeCount").value(8));
@@ -85,7 +90,7 @@ class ChapterContentApiTest {
 
     @Test
     void 바이트가_한_글자라도_다르면_새_버전이다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         // 끝에 개행 하나만 더한다 — JSON 의 "의미"는 완전히 같지만 바이트가 다르다.
@@ -94,7 +99,7 @@ class ChapterContentApiTest {
         System.arraycopy(sample, 0, oneMoreNewline, 0, sample.length);
         oneMoreNewline[sample.length] = '\n';
 
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(oneMoreNewline))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(oneMoreNewline))
                 .andExpect(status().isCreated())
                 .andExpect(jsonPath("$.version").value(2));
 
@@ -106,7 +111,7 @@ class ChapterContentApiTest {
 
     @Test
     void 색인의_option_count와_event_key가_원본과_같다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         // EP01 은 선택지가 3개, EP04_01 은 0개 (원본 확인값)
@@ -124,7 +129,7 @@ class ChapterContentApiTest {
 
     @Test
     void 내려받은_본문은_바이트는_달라도_의미는_같다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         MvcResult result = mockMvc.perform(get("/content/chapters/qwer/latest"))
@@ -145,7 +150,7 @@ class ChapterContentApiTest {
 
     @Test
     void 한글_라벨이_깨지지_않는다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         MvcResult result = mockMvc.perform(get("/content/chapters/qwer/1"))
@@ -180,7 +185,7 @@ class ChapterContentApiTest {
         // 상태 코드는 409(DuplicateKey) 또는 400(DataIntegrity) 중 하나다 —
         // 배치 INSERT 실패 시 드라이버가 BatchUpdateException 에 어떤 SQLState/errorCode 를 싣는지에 달렸다.
         // 이 테스트가 지키는 것은 상태 코드가 아니라 아래 두 줄이다.
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(duplicated))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(duplicated))
                 .andExpect(status().is4xxClientError());
 
         assertThat(count("chapter_contents")).isZero();
@@ -195,7 +200,7 @@ class ChapterContentApiTest {
                 { "ChapterId": "x", "DisplayName": "", "StartEpisodeId": "EP01", "Nodes": [] }
                 """.getBytes(StandardCharsets.UTF_8);
 
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(empty))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(empty))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
 
@@ -209,7 +214,7 @@ class ChapterContentApiTest {
                   "Nodes": [ { "EpisodeId": "EP01", "NextOptions": [] } ] }
                 """.getBytes(StandardCharsets.UTF_8);
 
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(noId))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(noId))
                 .andExpect(status().isBadRequest())
                 .andExpect(jsonPath("$.code").value("BAD_REQUEST"));
     }
@@ -218,13 +223,13 @@ class ChapterContentApiTest {
 
     @Test
     void 목록은_챕터마다_최신_버전_한_줄이다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         byte[] v2 = new byte[sample.length + 1];
         System.arraycopy(sample, 0, v2, 0, sample.length);
         v2[sample.length] = '\n';
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(v2))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(v2))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/content/chapters"))
@@ -236,7 +241,7 @@ class ChapterContentApiTest {
 
     @Test
     void 버전_목록에_checksum과_수입_시각이_있다() throws Exception {
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/content/chapters/qwer/versions"))
@@ -253,7 +258,7 @@ class ChapterContentApiTest {
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
 
-        mockMvc.perform(post("/content/chapters").contentType(MediaType.APPLICATION_JSON).content(sample))
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey).contentType(MediaType.APPLICATION_JSON).content(sample))
                 .andExpect(status().isCreated());
 
         mockMvc.perform(get("/content/chapters/qwer/99"))
@@ -280,5 +285,40 @@ class ChapterContentApiTest {
             }
             return in.readAllBytes();
         }
+    }
+
+    // ── M6: 보호 자체의 확인 (M6-7, D-013) ──────────────────────────
+
+    @Test
+    void 키_없이_콘텐츠_POST는_401이다() throws Exception {
+        mockMvc.perform(post("/content/chapters")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(sample))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        // 틀린 키도 같은 401 — "키가 없다"와 "키가 틀렸다"를 구분해 주면 키를 맞혀 볼 수 있게 된다.
+        mockMvc.perform(post("/content/chapters")
+                        .header("X-Admin-Key", "wrong-key")
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(sample))
+                .andExpect(status().isUnauthorized());
+
+        Long count = jdbc.sql("SELECT COUNT(*) FROM chapter_contents").query(Long.class).single();
+        assertThat(count).isZero();
+    }
+
+    @Test
+    void 콘텐츠_GET은_키_없이_공개다() throws Exception {
+        // 클라(Unity)가 내려받는 경로다 — 관리자 인터셉터는 /content 의 POST 만 잡는다 (C5).
+        mockMvc.perform(post("/content/chapters").header("X-Admin-Key", adminKey)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content(sample))
+                .andExpect(status().isCreated());
+
+        mockMvc.perform(get("/content/chapters"))
+                .andExpect(status().isOk());
+        mockMvc.perform(get("/content/chapters/qwer/latest"))
+                .andExpect(status().isOk());
     }
 }

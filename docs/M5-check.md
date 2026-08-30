@@ -1,5 +1,9 @@
 # M5 검증 절차 — 조회와 집계
 
+> **M6 이후**: 이 문서의 명령은 M5 시점 기준이라 **토큰 없이** 적혀 있다. 지금 다시 돌리려면
+> `/users`(POST 제외)·`/playthroughs` 는 `Authorization: Bearer <토큰>`, `/content` POST 는 `X-Admin-Key`,
+> `/stats` 는 `X-Admin-Key` 가 필요하다. 로그인과 헤더 helper 는 **M6-check §3.0** 을 쓴다.
+
 > PLAN §2.6. 결과는 §6 표에. 선행: M4 `검증됨`.
 > **이번 M은 스키마가 바뀐다** (`V3__stats_indexes.sql`) 그리고 **데이터가 통째로 갈린다** (`db/seed.sql`).
 

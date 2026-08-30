@@ -2,6 +2,7 @@ package com.sparta.springprepare.save;
 
 import com.sparta.springprepare.common.BadRequestException;
 import com.sparta.springprepare.common.ConflictException;
+import com.sparta.springprepare.common.ForbiddenException;
 import com.sparta.springprepare.common.NotFoundException;
 import com.sparta.springprepare.content.ChapterContentRepository;
 import com.sparta.springprepare.content.ChapterEpisode;
@@ -12,6 +13,7 @@ import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 import tools.jackson.databind.ObjectMapper;
 
+import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -105,10 +107,11 @@ public class SaveSlotService {
      *              클라는 409 로 받은 서버 revision 을 baseRevision 에 넣어 다시 보내야 한다.
      *              그래야 그 사이 끼어든 <i>세 번째</i> 기기까지 걸러진다. force 가 바꾸는 것은 이력뿐이다:
      *              이미 있는 seq·이벤트를 빼고 새 것만 INSERT 한다.
+     * @param authUserId 인터셉터가 토큰에서 확인한 사용자 (M6-5). 회차 소유 검증(M6-6)의 기준.
      */
     @Transactional
     public SaveUploadResponse upsert(long playthroughId, int slotNo, boolean force,
-                                     SaveUploadRequest request) {
+                                     long authUserId, SaveUploadRequest request) {
         if (slotNo < SLOT_NO_MIN || slotNo > SLOT_NO_MAX) {
             throw new BadRequestException(
                     "슬롯 번호는 " + SLOT_NO_MIN + "~" + SLOT_NO_MAX + " 범위여야 합니다: " + slotNo);
@@ -135,6 +138,7 @@ public class SaveSlotService {
 
         Playthrough playthrough = playthroughRepository.findById(playthroughId)
                 .orElseThrow(() -> new NotFoundException("회차가 없습니다: id=" + playthroughId));
+        requireOwner(playthrough, authUserId);   // 없는 회차 404 → 남의 회차 403, 이 순서다 (M6-6)
 
         // 세이브는 chapter_id 가 아니라 **특정 버전**을 가리킨다 (schema.sql 주석).
         // 여기서 먼저 조회하지 않으면 FK 위반이 나고, 그것은 클라에게 "그 콘텐츠 버전이 서버에 없다"를
@@ -148,6 +152,13 @@ public class SaveSlotService {
         // 건별로 조회하면 선택 20건에 쿼리 20번이다 (N+1). IN (:ids) 한 번이면 된다.
         Map<String, String> eventKeyByEpisode =
                 resolveEpisodes(chapterContentId, choices, events);
+
+        // D-011 파생 (M6-2b): 이미 이 회차에서 난 EventKey 는 **빼고 넣는다**.
+        // V4 가 UNIQUE 를 (playthrough_id, event_key) 로 좁혀서, 챕터 버전을 올린 뒤의 재도달이나
+        // 다른 슬롯에서의 재도달이 전부 "중복"이 됐다 — 그때마다 요청 전체를 409 로 떨어뜨리는 대신,
+        // M4 가 choices 재전송을 replayed 로 흡수했듯 조용히 흡수한다. force 전용이던 이벤트 필터가
+        // 모든 경로로 올라온 것이고, acceptedEvents 가 보낸 수보다 작은 것이 이제 정상이다.
+        List<EventUpload> newEvents = withoutExistingEvents(playthroughId, events, eventKeyByEpisode);
 
         String snapshotJson = objectMapper.writeValueAsString(request.snapshot());
         int playSeconds = request.playSeconds() == null ? 0 : request.playSeconds();
@@ -164,8 +175,10 @@ public class SaveSlotService {
             saveSlotRepository.insert(playthroughId, slotNo, chapterContentId,
                     request.currentEpisodeId(), snapshotJson, playSeconds, deviceId);
             SaveSlotState created = reloadState(playthroughId, slotNo);
-            writeHistory(created.id(), playthroughId, chapterContentId, choices, events, eventKeyByEpisode);
-            return SaveUploadResponse.applied(created, choices.size(), events.size());
+            // 신규 슬롯이어도 이벤트는 걸러진 것(newEvents)을 넣는다 — 이벤트는 슬롯이 아니라
+            // **회차**에 속하므로, 다른 슬롯이 이미 기록한 EventKey 와 겹칠 수 있다.
+            writeHistory(created.id(), playthroughId, chapterContentId, choices, newEvents, eventKeyByEpisode);
+            return SaveUploadResponse.applied(created, choices.size(), newEvents.size());
         }
 
         SaveSlotState current = found.get();
@@ -190,20 +203,49 @@ public class SaveSlotService {
 
         SaveSlotState updated = reloadState(playthroughId, slotNo);
 
-        // ── force: 새 것만 ──────────────────────────────────────────
+        // ── force: 선택도 새 것만 ────────────────────────────────────
+        // 이벤트는 이미 위(newEvents)에서 걸렀다 — M6 부터 이벤트 흡수는 force 전용이 아니다 (M6-2b).
+        // 선택은 다르다: (save_slot_id, seq) 재전송은 정상 경로에서 replayed 판정이 흡수하므로,
+        // 판정을 건너뛰는 force 에서만 직접 걸러 낸다.
         List<ChoiceUpload> newChoices = choices;
-        List<EventUpload> newEvents = events;
         if (force) {
             Set<Integer> takenSeqs = choiceHistoryRepository.existingSeqs(updated.id(), seqsOf(choices));
             newChoices = choices.stream().filter(c -> !takenSeqs.contains(c.seq())).toList();
-
-            Set<String> takenEpisodes = eventLogRepository.existingEpisodeIds(
-                    playthroughId, chapterContentId, episodeIdsOf(events));
-            newEvents = events.stream().filter(e -> !takenEpisodes.contains(e.episodeId())).toList();
         }
 
         writeHistory(updated.id(), playthroughId, chapterContentId, newChoices, newEvents, eventKeyByEpisode);
         return SaveUploadResponse.applied(updated, newChoices.size(), newEvents.size());
+    }
+
+    /**
+     * "이미 있으면 빼고 넣기" (M6-2b). 두 겹으로 거른다:
+     * <ol>
+     *   <li>DB — 이 회차에 이미 기록된 EventKey (existingEventKeys 한 번의 IN 조회, N+1 없음).</li>
+     *   <li>요청 안 — 같은 요청에 같은 EventKey 가 두 번 오는 경우(개편 전후의 두 에피소드가
+     *       같은 키를 가리키는 식). 첫 번째만 남긴다 — 안 거르면 배치 INSERT 자신이 UNIQUE 에 걸린다.</li>
+     * </ol>
+     * choices 의 요청 내 중복(seq)이 400 인 것과 결이 다른 이유: 같은 seq 두 번은 클라의 **모순**이지만,
+     * 같은 EventKey 두 번은 새 UNIQUE 정의(회차당 1회)가 만든 **정상 데이터의 모양**이다. 모순은 알리고,
+     * 정의의 결과는 흡수한다.
+     */
+    private List<EventUpload> withoutExistingEvents(long playthroughId,
+                                                    List<EventUpload> events,
+                                                    Map<String, String> eventKeyByEpisode) {
+        if (events.isEmpty()) {
+            return events;
+        }
+        Set<String> taken = eventLogRepository.existingEventKeys(
+                playthroughId, new LinkedHashSet<>(eventKeyByEpisode.values()));
+        Set<String> seenInRequest = new LinkedHashSet<>();
+        List<EventUpload> fresh = new ArrayList<>();
+        for (EventUpload event : events) {
+            String eventKey = eventKeyByEpisode.get(event.episodeId());
+            if (taken.contains(eventKey) || !seenInRequest.add(eventKey)) {
+                continue;
+            }
+            fresh.add(event);
+        }
+        return fresh;
     }
 
     /**
@@ -256,10 +298,6 @@ public class SaveSlotService {
 
     private static List<Integer> seqsOf(List<ChoiceUpload> choices) {
         return choices.stream().map(ChoiceUpload::seq).toList();
-    }
-
-    private static List<String> episodeIdsOf(List<EventUpload> events) {
-        return events.stream().map(EventUpload::episodeId).toList();
     }
 
     /**
@@ -342,23 +380,30 @@ public class SaveSlotService {
     }
 
     @Transactional(readOnly = true)
-    public List<SaveSlotSummary> list(long playthroughId) {
-        requirePlaythrough(playthroughId);
+    public List<SaveSlotSummary> list(long playthroughId, long authUserId) {
+        requireOwned(playthroughId, authUserId);
         return saveSlotRepository.findSummaries(playthroughId);
     }
 
     @Transactional(readOnly = true)
-    public SaveSlotDetail get(long playthroughId, int slotNo) {
-        requirePlaythrough(playthroughId);
+    public SaveSlotDetail get(long playthroughId, int slotNo, long authUserId) {
+        requireOwned(playthroughId, authUserId);
         return saveSlotRepository.findDetail(playthroughId, slotNo)
                 .orElseThrow(() -> new NotFoundException(
                         "슬롯이 없습니다: 회차 " + playthroughId + " 슬롯 " + slotNo));
     }
 
-    /** 회차가 없는 것과 슬롯이 비어 있는 것은 다르다 — 전자는 404, 후자는 빈 배열이다. */
-    private void requirePlaythrough(long playthroughId) {
-        if (playthroughRepository.findById(playthroughId).isEmpty()) {
-            throw new NotFoundException("회차가 없습니다: id=" + playthroughId);
+    /** 회차가 없다(404) / 남의 것이다(403) / 슬롯이 비어 있다(빈 배열·404) — 전부 다른 사실이다 (M6-6). */
+    private void requireOwned(long playthroughId, long authUserId) {
+        Playthrough playthrough = playthroughRepository.findById(playthroughId)
+                .orElseThrow(() -> new NotFoundException("회차가 없습니다: id=" + playthroughId));
+        requireOwner(playthrough, authUserId);
+    }
+
+    /** 세이브는 회차를 통해 소유된다 — 슬롯 자체에는 user_id 가 없고, 그래서 검증 기준도 회차다. */
+    private static void requireOwner(Playthrough playthrough, long authUserId) {
+        if (!playthrough.userId().equals(authUserId)) {
+            throw new ForbiddenException("다른 사용자의 회차입니다: id=" + playthrough.id());
         }
     }
 

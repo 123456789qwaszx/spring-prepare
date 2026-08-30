@@ -28,6 +28,18 @@ dependencies {
     implementation 'org.springframework.boot:spring-boot-starter-jdbc'
     runtimeOnly 'com.mysql:mysql-connector-j'
 
+    // ── M6 에서 처음 늘어난 의존성 (M6 계획서 §5) ──────────────────────────────
+    // Flyway (D-012). Boot 4 에는 spring-boot-starter-flyway 가 **있다** — Boot 3 까지는
+    // 없었고 4.0 모듈화 때 생겼다 (boot 레포 v4.1.1 의 starter/spring-boot-starter-flyway 로
+    // 확인). 스타터가 자동 구성 모듈(spring-boot-flyway)과 flyway-core 를 함께 끌고 온다.
+    implementation 'org.springframework.boot:spring-boot-starter-flyway'
+    // Flyway 9+ 부터 DB 지원이 모듈로 갈라졌다. MySQL 은 이 모듈이 없으면
+    // "Unsupported Database" 로 기동이 실패한다. 버전은 Boot 관리(Flyway 12.4.0).
+    runtimeOnly 'org.flywaydb:flyway-mysql'
+    // BCrypt 하나 때문에 전체 Security(필터 체인·CSRF·기본 로그인)를 넣지 않는다 —
+    // crypto 모듈은 단독으로 동작한다 (M6 계획서 §3-1). 버전은 Boot 관리(Security 7.1.1).
+    implementation 'org.springframework.security:spring-security-crypto'
+
     // 실습1·2 코드(Book, Memo)가 쓴다. 실습3 코드는 record를 써서 Lombok이 필요 없다 (PLAN §2.5).
     compileOnly 'org.projectlombok:lombok'
     annotationProcessor 'org.projectlombok:lombok'

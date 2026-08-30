@@ -1,10 +1,12 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.support.AuthSupport;
 import com.sparta.springprepare.support.DbCleaner;
 import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.http.MediaType;
@@ -65,9 +67,14 @@ class SaveHistoryApiTest {
     ObjectMapper objectMapper;
 
     private long playthroughId;
+    private String bearer;
+
+    /** 콘텐츠 수입(M1 API) 테스트 하나가 POST /content 를 쓴다 — M6 부터 관리자 키가 필요하다 (D-013). */
+    @Value("${app.admin-key}")
+    String adminKey;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         new DbCleaner(jdbc).clean();
         long userId = Fixtures.insertUser(jdbc, "amiya");
         playthroughId = Fixtures.insertPlaythrough(jdbc, userId);
@@ -78,6 +85,7 @@ class SaveHistoryApiTest {
         Fixtures.insertEpisode(jdbc, contentId, "EP02_01", "");
         Fixtures.insertEpisode(jdbc, contentId, "EP03_01", "MILESTONE_MIDPOINT");
         Fixtures.insertEpisode(jdbc, contentId, "EP04_01", "ENDING_A");
+        bearer = AuthSupport.login(mockMvc, "amiya");   // M6: 보호 경로
     }
 
     // ── 정상 경로 ────────────────────────────────────────────────────
@@ -114,7 +122,7 @@ class SaveHistoryApiTest {
 
         // event_log 는 chapter_content_id 라는 숫자만 들고 있다.
         // 그것이 어느 챕터의 몇 번째 버전인지, 표시명이 무엇인지는 chapter_contents 가 안다 — 첫 JOIN.
-        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 // eventKey 는 클라가 보낸 값이 아니다. 서버가 chapter_episodes 에서 찾아 넣었다.
@@ -138,7 +146,7 @@ class SaveHistoryApiTest {
                 """))).andExpect(status().isOk());
 
         // 기본값 0 → 전부
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(3))
                 .andExpect(jsonPath("$[0].seq").value(1))
@@ -147,7 +155,7 @@ class SaveHistoryApiTest {
 
         // afterSeq=2 → "2 다음부터"이므로 3 하나만
         mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1)
-                        .param("afterSeq", "2"))
+                        .header("Authorization", bearer).param("afterSeq", "2"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].seq").value(3));
@@ -166,15 +174,15 @@ class SaveHistoryApiTest {
                 """))).andExpect(status().isOk());
 
         // 같은 seq 1 이 두 슬롯에 나란히 존재한다 — UNIQUE 가 (save_slot_id, seq) 이지 seq 단독이 아니다.
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1).header("Authorization", bearer))
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].episodeId").value("EP01"));
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 2))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 2).header("Authorization", bearer))
                 .andExpect(jsonPath("$.length()").value(1))
                 .andExpect(jsonPath("$[0].episodeId").value("EP02_01"));
 
         // 이벤트는 슬롯으로 나뉘지 않는다. 두 슬롯에서 난 것이 회차 하나의 목록에 함께 있다.
-        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId).header("Authorization", bearer))
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].eventKey").value("MILESTONE_MIDPOINT"))
                 .andExpect(jsonPath("$[1].eventKey").value("ENDING_A"));
@@ -313,15 +321,15 @@ class SaveHistoryApiTest {
     @Test
     void 이벤트가_하나도_없으면_빈_배열이고_없는_회차는_404다() throws Exception {
         // "회차는 있는데 이벤트가 없다"와 "회차가 없다"는 다른 사실이다. 클라의 대응도 다르다.
-        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(0));
 
-        mockMvc.perform(get("/playthroughs/{pid}/events", 999_999))
+        mockMvc.perform(get("/playthroughs/{pid}/events", 999_999).header("Authorization", bearer))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
 
-        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1))
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}/choices", playthroughId, 1).header("Authorization", bearer))
                 .andExpect(status().isNotFound());
     }
 
@@ -351,6 +359,7 @@ class SaveHistoryApiTest {
         // (qwer.progression.json 은 EventKey 가 전부 비어 있어 쓸 수 없다 → 이 fixture 를 따로 둔다.)
         byte[] fixture = readResource("/content/qwer-events.progression.json");
         mockMvc.perform(post("/content/chapters")
+                        .header("X-Admin-Key", adminKey)     // M6-7: 콘텐츠 수입은 관리자만
                         .contentType(MediaType.APPLICATION_JSON)
                         .content(fixture))
                 .andExpect(status().isCreated())
@@ -367,7 +376,7 @@ class SaveHistoryApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.acceptedEvents").value(1));
 
-        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId))
+        mockMvc.perform(get("/playthroughs/{pid}/events", playthroughId).header("Authorization", bearer))
                 .andExpect(jsonPath("$.length()").value(1))
                 // 파일에 적힌 값이 그대로 나온다. 클라는 이 문자열을 보낸 적이 없다.
                 .andExpect(jsonPath("$[0].eventKey").value("ENDING_A"))
@@ -386,6 +395,7 @@ class SaveHistoryApiTest {
 
     private MockHttpServletRequestBuilder putSlot(int slotNo, String jsonBody) {
         return put("/playthroughs/{pid}/saves/{slotNo}", playthroughId, slotNo)
+                .header("Authorization", bearer)     // M6: 토큰 필수
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }
@@ -416,7 +426,7 @@ class SaveHistoryApiTest {
 
     /** 배열 응답의 첫 원소에서 필드 하나를 문자열로 꺼낸다. */
     private String readString(String url, String field) throws Exception {
-        MvcResult result = mockMvc.perform(get(url))
+        MvcResult result = mockMvc.perform(get(url).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andReturn();
         return objectMapper.readTree(result.getResponse().getContentAsByteArray())

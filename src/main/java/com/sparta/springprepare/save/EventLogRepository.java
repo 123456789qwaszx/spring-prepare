@@ -42,8 +42,9 @@ public class EventLogRepository {
      * @param eventKeyByEpisode 에피소드 → EventKey. 클라가 보낸 값이 아니라
      *                          서버가 chapter_episodes 에서 찾은 값이다 (EventUpload 주석 참조).
      *
-     * uk_event_once UNIQUE 를 위반하면(같은 이벤트 재기록) DuplicateKeyException → 409.
-     * M4 까지는 그대로 두고, 그 뒤에 재전송 흡수로 바꾼다.
+     * M6 부터 서비스가 이미 있는 EventKey 를 걸러 낸 뒤 넣는다 (M6-2b, D-011) —
+     * 여기서 uk_event_once 위반이 난다면 걸러내기와 이 INSERT 사이에 다른 요청이
+     * 끼어든 것이고, 그때는 UNIQUE 가 마지막 방어선으로 409 를 낸다 (F10 과 같은 경로).
      */
     public void insertAll(long playthroughId, long chapterContentId,
                           List<EventUpload> events, Map<String, String> eventKeyByEpisode) {
@@ -85,25 +86,24 @@ public class EventLogRepository {
                 .list();
     }
 
-    // force 전용 (M4). uk_event_once 는 (playthrough_id, event_key, chapter_content_id, episode_id) 인데
-    // event_key 는 서버가 episode_id 로 찾는 값이므로, episode_id 만 알면 중복 여부가 정해진다.
-    private static final String SELECT_EXISTING_EPISODES = """
-            SELECT episode_id
+    // 중복 흡수용 (M6-2b, D-011). M4 의 existingEpisodeIds 를 대체했다 —
+    // 그 메서드는 (playthrough, content, episode) 기준이라 옛 UNIQUE 의 모양이었고,
+    // V4 가 UNIQUE 를 (playthrough_id, event_key) 로 좁히면서 판정 기준도 event_key 가 됐다.
+    // "이 회차에서 이 EventKey 가 이미 났는가" — 콘텐츠 버전은 더 이상 묻지 않는다.
+    private static final String SELECT_EXISTING_KEYS = """
+            SELECT event_key
             FROM event_log
-            WHERE playthrough_id     = :playthroughId
-              AND chapter_content_id = :chapterContentId
-              AND episode_id IN (:episodeIds)
+            WHERE playthrough_id = :playthroughId
+              AND event_key IN (:eventKeys)
             """;
 
-    public Set<String> existingEpisodeIds(long playthroughId, long chapterContentId,
-                                          Collection<String> episodeIds) {
-        if (episodeIds.isEmpty()) {
-            return Set.of();
+    public Set<String> existingEventKeys(long playthroughId, Collection<String> eventKeys) {
+        if (eventKeys.isEmpty()) {
+            return Set.of();     // IN () 는 SQL 문법 오류다 (M3 §6 C3)
         }
-        return new LinkedHashSet<>(jdbc.sql(SELECT_EXISTING_EPISODES)
+        return new LinkedHashSet<>(jdbc.sql(SELECT_EXISTING_KEYS)
                 .param("playthroughId", playthroughId)
-                .param("chapterContentId", chapterContentId)
-                .param("episodeIds", episodeIds)
+                .param("eventKeys", eventKeys)
                 .query(String.class)
                 .list());
     }

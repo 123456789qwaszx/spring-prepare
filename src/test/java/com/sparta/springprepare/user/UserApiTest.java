@@ -1,6 +1,8 @@
 package com.sparta.springprepare.user;
 
+import com.sparta.springprepare.support.AuthSupport;
 import com.sparta.springprepare.support.DbCleaner;
+import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -73,6 +75,13 @@ class UserApiTest {
                 .query(LocalDateTime.class)
                 .single();
         assertThat(createdAt).isNotNull();
+
+        // M6-3: 저장된 것은 평문이 아니라 BCrypt 해시다 — 완료 기준 "SELECT password 에 평문 없음"의 자동판.
+        String stored = jdbc.sql("SELECT password FROM users WHERE username = :username")
+                .param("username", "amiya")
+                .query(String.class)
+                .single();
+        assertThat(stored).startsWith("$2a$").isNotEqualTo("test-only");
     }
 
     @Test
@@ -94,10 +103,24 @@ class UserApiTest {
     }
 
     @Test
-    void 없는_id를_조회하면_404다() throws Exception {
+    void 토큰_없이_사용자_조회는_401이다() throws Exception {
+        // M6: GET /users/{id} 는 보호 경로다. 예전의 "없는 id → 404" 는 이제 HTTP 로 닿을 수 없다 —
+        // 토큰이 없으면 401, 토큰이 있어도 남의 id 는 403 이 먼저다 (아래 테스트).
+        // 서비스의 404 분기는 남아 있지만(방어), 정상 클라가 만날 일이 없는 코드가 됐다.
         mockMvc.perform(get("/users/{id}", 999_999))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+    }
+
+    @Test
+    void 남의_id를_조회하면_403이다() throws Exception {
+        Fixtures.insertUser(jdbc, "amiya");
+        String bearer = AuthSupport.login(mockMvc, "amiya");
+
+        // 999999 가 실존하는지는 중요하지 않다 — 내 id 가 아니라는 사실만으로 인터셉터가 끊는다.
+        mockMvc.perform(get("/users/{id}", 999_999).header("Authorization", bearer))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
     }
 
     @Test
@@ -110,11 +133,13 @@ class UserApiTest {
                 .andExpect(status().isCreated())
                 .andReturn();
 
-        // Location 헤더를 그대로 따라간다 — 201 응답의 Location 이 실제로 쓸 수 있는 주소인지 확인
+        // Location 헤더를 그대로 따라간다 — 201 응답의 Location 이 실제로 쓸 수 있는 주소인지 확인.
+        // M6 부터는 본인 토큰이 있어야 열린다 — 가입에 쓴 비밀번호로 로그인부터 한다.
         String location = created.getResponse().getHeader("Location");
         assertThat(location).isNotNull();
+        String bearer = AuthSupport.login(mockMvc, "reader");
 
-        mockMvc.perform(get(location))
+        mockMvc.perform(get(location).header("Authorization", bearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("reader"))
                 .andExpect(jsonPath("$.password").doesNotExist());

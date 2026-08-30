@@ -11,3 +11,11 @@
 spring.datasource.url=jdbc:mysql://localhost:3306/game_test?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
 spring.datasource.username=root
 spring.datasource.password=CHANGE_ME
+
+# ── M6 추가분 — 이 두 줄을 실제 application-test.properties 에도 복사한다 ──
+# 관리자 키 (M6-7, D-013). 테스트가 @Value 로 읽어 헤더에 넣으므로 값은 아무거나 되지만
+# 비워 두면 컨텍스트 기동이 실패한다 (일부러 — 조용한 무인증보다 시끄러운 실패).
+app.admin-key=test-admin-key
+# BCrypt 를 테스트에서 빠르게 (M6 계획서 §6 C7). 검증은 해시 안의 cost 를 따르므로
+# strength 4 로 만든 해시든 10 으로 만든 해시든 서로 문제없이 matches 된다.
+app.auth.bcrypt-strength=4

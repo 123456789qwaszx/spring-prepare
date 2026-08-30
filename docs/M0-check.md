@@ -1,5 +1,9 @@
 # M0 검증 절차 — 접속 확인
 
+> **M6 이후**: 이 문서의 명령은 M0 시점 기준이라 **토큰 없이** 적혀 있다. 지금 다시 돌리려면
+> `/users`(POST 제외)·`/playthroughs` 는 `Authorization: Bearer <토큰>`, `/content` POST 는 `X-Admin-Key`,
+> `/stats` 는 `X-Admin-Key` 가 필요하다. 로그인과 헤더 helper 는 **M6-check §3.0** 을 쓴다.
+
 > PLAN §2.6: 완료 기준을 curl/Postman 으로 재현하는 문서. 위에서 아래로 그대로 따라가면 M0 완료 기준을 전부 확인한다.
 > 결과는 맨 아래 §6 표에 적고, `docs/plans/M0.md` §4·§7 을 갱신한다.
 

@@ -2,6 +2,7 @@ package com.sparta.springprepare.user;
 
 import com.sparta.springprepare.common.BadRequestException;
 import com.sparta.springprepare.common.NotFoundException;
+import org.springframework.security.crypto.password.PasswordEncoder;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -21,9 +22,11 @@ public class UserService {
      * "어떤 값을 저장할지"는 유스케이스의 결정이고, Repository는 받은 값을 넣기만 함.
      * */
     private final UserRepository userRepository;
+    private final PasswordEncoder passwordEncoder;
 
-    public UserService(UserRepository userRepository) {
+    public UserService(UserRepository userRepository, PasswordEncoder passwordEncoder) {
         this.userRepository = userRepository;
+        this.passwordEncoder = passwordEncoder;
     }
 
     /**
@@ -40,7 +43,10 @@ public class UserService {
             throw new BadRequestException("password 는 비어 있을 수 없습니다.");
         }
 
-        long id = userRepository.insert(request.username(), request.password());
+        // M6-3: 평문이 아니라 해시를 저장한다. 해시는 단방향이라 유출돼도 원문을 복원할 수 없고,
+        // 검증은 "복호화해서 비교"가 아니라 "다시 해싱해서 비교"(matches)다 — 해시 vs 암호화의 차이.
+        // 여기(유스케이스)서 encode 하는 이유: "어떤 값을 저장할지"는 서비스의 결정이다 (클래스 주석).
+        long id = userRepository.insert(request.username(), passwordEncoder.encode(request.password()));
         return new UserResponse(id, request.username());
     }
 

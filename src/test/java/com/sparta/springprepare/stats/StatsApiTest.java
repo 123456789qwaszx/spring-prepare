@@ -1,7 +1,10 @@
 package com.sparta.springprepare.stats;
 
+import com.sparta.springprepare.support.AuthSupport;
+import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
 import org.springframework.boot.test.context.SpringBootTest;
 import org.springframework.boot.webmvc.test.autoconfigure.AutoConfigureMockMvc;
 import org.springframework.test.context.ActiveProfiles;
@@ -47,13 +50,29 @@ class StatsApiTest {
     @Autowired
     MockMvc mockMvc;
 
+    /** /stats/** 는 관리자 키가 지킨다 (D-013). 값은 프로필 설정에서 읽는다 — 테스트가 값에 묶이지 않게. */
+    @Value("${app.admin-key}")
+    String adminKey;
+
+    /** /users/{id}/summary 는 본인 토큰이 필요하다. seed 사용자의 비밀번호는 전부 'seed-only' (M6-3b). */
+    private String amiyaBearer;   // id 1
+    private String eyjaBearer;    // id 5
+
+    @BeforeEach
+    void loginSeedUsers() throws Exception {
+        // @Sql(seed)이 이 메서드보다 먼저 돈다 — SpringExtension 의 리스너가 @BeforeEach 보다 앞이다.
+        // seed 가 sessions 도 비우므로 매 테스트 새로 로그인한다.
+        amiyaBearer = AuthSupport.login(mockMvc, "amiya", "seed-only");
+        eyjaBearer = AuthSupport.login(mockMvc, "eyja", "seed-only");
+    }
+
     // ── 이벤트 도달률 ────────────────────────────────────────────────
 
     @Test
     void 이벤트_도달률은_전체_회차를_분모로_한다() throws Exception {
         // 분모 20 = 전체 회차 (종료 여부 무관). 이 정의를 바꾸면 답이 바뀐다 —
         // 종료 회차 12 를 분모로 하면 ENDING_A 는 66.7% 다. 둘 다 맞는 숫자이고 물음이 다르다.
-        mockMvc.perform(get("/stats/events"))
+        mockMvc.perform(get("/stats/events").header("X-Admin-Key", adminKey))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(3))
                 // ORDER BY reachedPlaythroughs DESC
@@ -75,7 +94,8 @@ class StatsApiTest {
 
     @Test
     void 선택_비율은_에피소드마다_100퍼센트가_된다() throws Exception {
-        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer").param("version", "1"))
+        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer")
+                        .header("X-Admin-Key", adminKey).param("version", "1"))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(6))
                 // EP01 — 50 / 30 / 20 (합 100)
@@ -103,7 +123,7 @@ class StatsApiTest {
         // JSON_TABLE 의 FOR ORDINALITY 는 1부터 세고 우리 option_index 는 0부터다.
         // `- 1` 을 빠뜨리면 라벨만 한 칸 밀리고 **숫자는 전부 멀쩡하다** — 조용히 틀리는 종류다.
         // 그래서 라벨과 번호를 짝지어 단언한다. 숫자만 보는 테스트로는 절대 잡히지 않는다.
-        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer"))
+        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer").header("X-Admin-Key", adminKey))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].choiceLabel").value("성실하게 간다"))   // EP01 option 0
                 .andExpect(jsonPath("$[1].choiceLabel").value("요령껏 간다"))     // EP01 option 1
@@ -119,7 +139,7 @@ class StatsApiTest {
     @Test
     void version을_생략하면_최신_버전이다() throws Exception {
         // seed 에는 v1 하나뿐이라 결과가 같아야 한다. 같다는 것이 곧 "최신을 골랐다" 의 증거다.
-        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer"))
+        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer").header("X-Admin-Key", adminKey))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(6))
                 .andExpect(jsonPath("$[0].picks").value(50));
@@ -129,11 +149,12 @@ class StatsApiTest {
     void 없는_챕터와_없는_버전은_404다() throws Exception {
         // 빈 배열이 아니라 404 다. "그런 콘텐츠가 없다" 와 "선택이 0건이다" 는 다른 사실이고,
         // 빈 배열을 주면 클라는 "아직 아무도 안 골랐다" 로 읽는다 — 조용히 틀린 답이다 (M3 의 구분 그대로).
-        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "nope"))
+        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "nope").header("X-Admin-Key", adminKey))
                 .andExpect(status().isNotFound())
                 .andExpect(jsonPath("$.code").value("NOT_FOUND"));
 
-        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer").param("version", "99"))
+        mockMvc.perform(get("/stats/chapters/{chapterId}/choices", "qwer")
+                        .header("X-Admin-Key", adminKey).param("version", "99"))
                 .andExpect(status().isNotFound());
     }
 
@@ -144,7 +165,7 @@ class StatsApiTest {
         // amiya = 회차 1~4. 슬롯은 회차당 1개(회차 11 미만이므로) → 4개.
         // playSeconds = 100+200+300+400 = 1000.
         // 여기서 슬롯을 4 가 아니라 다른 수로 세면 COUNT(DISTINCT) 가 빠진 것이다.
-        mockMvc.perform(get("/users/{userId}/summary", 1))
+        mockMvc.perform(get("/users/{userId}/summary", 1).header("Authorization", amiyaBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.userId").value(1))
                 .andExpect(jsonPath("$.username").value("amiya"))
@@ -162,7 +183,7 @@ class StatsApiTest {
         // 슬롯은 회차당 2개(11 이상) → 8개.
         // playSeconds = 슬롯1(1700+1800+1900+2000=7400) + 슬롯2(170+180+190+200=740) = 8140.
         //   ← 슬롯이 2개인 회차의 합을 빠뜨리면 7400 이 나온다. 팬아웃과 반대 방향의 실수다.
-        mockMvc.perform(get("/users/{userId}/summary", 5))
+        mockMvc.perform(get("/users/{userId}/summary", 5).header("Authorization", eyjaBearer))
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.username").value("eyja"))
                 .andExpect(jsonPath("$.playthroughs").value(4))
@@ -173,9 +194,31 @@ class StatsApiTest {
     }
 
     @Test
-    void 없는_사용자는_404다() throws Exception {
-        mockMvc.perform(get("/users/{userId}/summary", 999_999))
-                .andExpect(status().isNotFound())
-                .andExpect(jsonPath("$.code").value("NOT_FOUND"));
+    void 남의_summary는_403이다() throws Exception {
+        // M6 이전에는 "없는 사용자 → 404" 였다. 이제 /users/{id}/** 는 본인만이라(인터셉터),
+        // 남의 id 든 없는 id 든 내 것이 아닌 순간 403 이다 — 404 분기는 HTTP 로 닿지 않는다.
+        mockMvc.perform(get("/users/{userId}/summary", 5).header("Authorization", amiyaBearer))
+                .andExpect(status().isForbidden())
+                .andExpect(jsonPath("$.code").value("FORBIDDEN"));
+    }
+
+    // ── M6: 보호 자체의 확인 ─────────────────────────────────────────
+
+    @Test
+    void 관리자_키_없이_stats는_401이다() throws Exception {
+        // D-013. 집계는 관리자용이다 — 키가 없으면 로그인 토큰이 있어도 소용없다.
+        mockMvc.perform(get("/stats/events"))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
+
+        mockMvc.perform(get("/stats/events").header("Authorization", amiyaBearer))
+                .andExpect(status().isUnauthorized());
+    }
+
+    @Test
+    void 토큰_없이_summary는_401이다() throws Exception {
+        mockMvc.perform(get("/users/{userId}/summary", 1))
+                .andExpect(status().isUnauthorized())
+                .andExpect(jsonPath("$.code").value("UNAUTHORIZED"));
     }
 }

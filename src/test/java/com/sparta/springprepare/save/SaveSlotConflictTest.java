@@ -1,5 +1,6 @@
 package com.sparta.springprepare.save;
 
+import com.sparta.springprepare.support.AuthSupport;
 import com.sparta.springprepare.support.DbCleaner;
 import com.sparta.springprepare.support.Fixtures;
 import org.junit.jupiter.api.BeforeEach;
@@ -50,9 +51,10 @@ class SaveSlotConflictTest {
     JdbcClient jdbc;
 
     private long playthroughId;
+    private String bearer;
 
     @BeforeEach
-    void setUp() {
+    void setUp() throws Exception {
         new DbCleaner(jdbc).clean();
         long userId = Fixtures.insertUser(jdbc, "amiya");
         playthroughId = Fixtures.insertPlaythrough(jdbc, userId);
@@ -60,6 +62,7 @@ class SaveSlotConflictTest {
         Fixtures.insertEpisode(jdbc, contentId, "EP01", "");
         Fixtures.insertEpisode(jdbc, contentId, "EP02_01", "");
         Fixtures.insertEpisode(jdbc, contentId, "EP03_01", "MILESTONE_MIDPOINT");
+        bearer = AuthSupport.login(mockMvc, "amiya");   // M6: 보호 경로
     }
 
     // ── 재전송 (D-010) ──────────────────────────────────────────────
@@ -162,7 +165,8 @@ class SaveSlotConflictTest {
 
         // 스냅샷·기기는 B 의 것으로 덮였고, 이력은 A 것이 남은 채 B 것이 더해졌다.
         mockMvc.perform(org.springframework.test.web.servlet.request.MockMvcRequestBuilders
-                        .get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1))
+                        .get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1)
+                        .header("Authorization", bearer))
                 .andExpect(jsonPath("$.playSeconds").value(500))
                 .andExpect(jsonPath("$.device").value("device-B"));
         assertThat(count("choice_history")).isEqualTo(3);
@@ -214,6 +218,7 @@ class SaveSlotConflictTest {
 
     private MockHttpServletRequestBuilder putSlot(int slotNo, String jsonBody) {
         return put("/playthroughs/{pid}/saves/{slotNo}", playthroughId, slotNo)
+                .header("Authorization", bearer)     // M6: 토큰 필수
                 .contentType(MediaType.APPLICATION_JSON)
                 .content(jsonBody.getBytes(StandardCharsets.UTF_8));
     }

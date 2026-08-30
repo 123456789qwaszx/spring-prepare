@@ -59,6 +59,21 @@ public class UserRepository {
                 .optional();
     }
 
+    // 로그인(M6-4)용. username 에는 UNIQUE 가 있어 0행 아니면 1행이다.
+    private static final String SELECT_BY_USERNAME = """
+            SELECT id, username, password, created_at
+            FROM users
+            WHERE username = :username
+            """;
+
+    /** password(해시)까지 읽는다 — AuthService 가 matches 로 대조할 재료다. 응답으로는 나가지 않는다 (UserResponse). */
+    public Optional<User> findByUsername(String username) {
+        return jdbc.sql(SELECT_BY_USERNAME)
+                .param("username", username)
+                .query(User.class)
+                .optional();
+    }
+
     // EXISTS 는 첫 행을 찾는 순간 멈춘다. COUNT(*) 는 전부 세므로 "있는지만" 알고 싶을 때는 낭비다.
     // 지금 규모에선 차이가 없지만, 쿼리가 무엇을 요구하는지 정확히 쓰는 습관이다.
     private static final String EXISTS_BY_ID = """
