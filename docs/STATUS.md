@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-08-31 — **M6 검증됨·커밋 완료. M7 착수.** Unity 레포 현황 재확인 완료(M7.md §2 — 전제 전부 실물과 일치, 새 발견 둘 → **M7-0 결정 필요**). 서버 잔손질 F44 반영(테스트 97건, 작성됨).
+> 마지막 갱신: 2026-08-31 — **M7 작성됨.** Unity 레포에 코드 17파일 반영(코어 훅 5 + `Save/` 12), D-015·D-016·D-017 결정, [M7-check.md](M7-check.md) 준비. 검증(Unity 에디터)과 양쪽 커밋 대기. 서버 잔손질 F44 도 반영돼 있음(테스트 97건, 다음 cleanTest 에서 확인).
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -14,16 +14,25 @@
 | M4 | 멱등성과 충돌 | **검증됨** (08-29) | [plans/M4.md](plans/M4.md) | [M4-check.md](M4-check.md) | 커밋만 남음. D-010. 확인된 사실 F30~F33 |
 | M5 | 조회와 집계 | **검증됨** (08-30) | [plans/M5.md](plans/M5.md) | [M5-check.md](M5-check.md) · [M5-explain.md](M5-explain.md) | 커밋 완료. V3 인덱스. 확인된 사실 F34~F38 |
 | M6 | 마감 | **검증됨** (08-31) | [plans/M6.md](plans/M6.md) | [M6-check.md](M6-check.md) | 커밋 완료. D-011~D-014. 확인된 사실 F39~F45. +잔손질 F44 핸들러(M7 착수 시, 작성됨) |
-| M7 | Unity 저장 포트 | **진행 중** (08-31) | [plans/M7.md](plans/M7.md) | — | Unity 레포 작업. 현황 재확인 완료, **D-015**(chapterVersion=에셋 checksum 대조) |
+| M7 | Unity 저장 포트 | **작성됨** (08-31) | [plans/M7.md](plans/M7.md) | [M7-check.md](M7-check.md) | Unity 레포 17파일. **D-015**(checksum 대조)·**D-016**(게스트 계정 파일)·**D-017**(에피소드 재개) |
 | M8 | Unity 복구·충돌 UI | 대기 | [plans/M8.md](plans/M8.md) | — | Unity 레포 작업 |
 | M9 | 선택 과제 | 대기 | [plans/M9.md](plans/M9.md) | — | |
 
 ## 지금
 
-- 위치: **M7 착수** (2026-08-31). Unity 레포 현황 재확인 완료 — 계획의 전제(드라이버·호스트·ISaveStore 부재·[3] 히스토리 성격)는 전부 실물과 일치, **새 발견 둘**(클라에 chapterVersion·playthrough 개념 부재)이 M7.md §2-2 에 있다.
-- ~~M7-0 결정 대기~~ → **D-015 결정됨** (08-31, 아미야): 에셋 checksum 대조. 다음은 M7-1(ISaveStore)부터.
-- 서버 잔손질 F44 반영됨(작성됨): JacksonException → 400 MALFORMED_JSON + 테스트 1건 = **97건**. 다음 `cleanTest test` 에서 검증.
-- 그다음: M7-1(ISaveStore)부터 Unity 레포 코드 — 전달 경로는 D-003 과 같은 방식(Unity 로컬 클론 폴더 연결 필요).
+- 위치: **M7 작성됨** (2026-08-31). M7-1~M7-7 전부 코드·문서로 반영 — Unity 레포에 21파일
+  (수정 6: ProgressionState·ResolvedOption·ChapterTransition·ProgressionDriver·ProgressionLauncher·VNAppBootstrap /
+  신설 15: IProgressionReporter·ProgressionReports + `Assets/Scripts/Save/` 13). 아미야 리뷰로 **리팩터링 1회**
+  (경계에서 한 번 검증·이벤트→직접 호출·SourceIndex — plans/M7.md §5) 뒤 **아미야가 스타일 정리**(ApiResult 분리,
+  `ResolvedOption?`, target-typed `new()`). 서버 레포는 문서만 — **API 형식 조정이 필요 없었다**
+  (M2~M6 계약을 클라가 그대로 소화. "서버 API가 클라 큐 모양을 결정한 게 아니라 그 반대"라던
+  계획서 §3-3 이 구현에서 실증된 셈).
+- 결정 셋: **D-015**(chapterVersion=에셋 checksum 대조), **D-016**(게스트 자동 계정, account.json),
+  **D-017**(재개는 에피소드 단위).
+- 다음 (아미야): ① Unity 에디터로 열어 컴파일 확인(.meta 생성 포함) → ② [M7-check.md](M7-check.md)
+  §0~§4 실행 → ③ Unity 레포 `feat: M7 …` 커밋 + 서버 레포 `test(M7): …` 커밋(docs 만).
+- F44(서버 테스트 97건)는 서버 레포 다음 `cleanTest test` 로 함께 확인 — M7 커밋에 같이 실린다.
+- M7-8(검증 후 전체 점검)은 검증 결과가 온 뒤에.
 
 ## M6 착수 전 결정 — **완료**
 
