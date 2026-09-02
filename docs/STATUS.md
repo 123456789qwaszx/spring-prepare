@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-09-02 — **M9 작성됨** (D-027 로 마감 M 재정의: 관리자 화면 `admin.html` + 챕터 개요 엔드포인트 + D-025 `ended_at` 결정 + [RETRO.md](RETRO.md)). 테스트 116 → **120**. [M9-check.md](M9-check.md) 실행·커밋 대기. M8-B(Unity) 는 검토 완료·검증 대기(독립). 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
+> 마지막 갱신: 2026-09-02 — **M9 검증됨 → 실습3 서버 종료** (`feat(M9)` 커밋으로 마감). 테스트 **120건**, `admin.html` seed 대조 통과 ([M9-check.md](M9-check.md)). 회고 [RETRO.md](RETRO.md). 남은 것은 서버 밖 — M8-B(Unity) 검증·답신, D-023 한 줄, (선택) M9-4 JPA 조각. 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -16,17 +16,17 @@
 | M6 | 마감 | **검증됨** (08-31) | [plans/M6.md](plans/M6.md) | [M6-check.md](M6-check.md) | 커밋 완료. D-011~D-014. 확인된 사실 F39~F45. +잔손질 F44 핸들러(M7 착수 시, 작성됨) |
 | M7 | Unity 저장 포트 | **검증됨** (09-01) | [plans/M7.md](plans/M7.md) | [M7-check.md](M7-check.md) | Unity 레포 21파일. D-015~D-017. 검증 중 발견: `-InFile`·`gradlew.bat`·회차 필터 질의·bootRun 미종료 — 전부 검증 환경 쪽 |
 | M8 | **A** 서버 계약 확장(갈래·즐겨찾기) → **B** Unity F6·복구·충돌 | **A 검증됨·커밋** (09-02) / **B 작성됨** (09-02) | [plans/M8.md](plans/M8.md) | [M8-check.md](M8-check.md) §A | **D-024 재정의.** 입력 = [handoff/unity-2026-09-02.md](handoff/unity-2026-09-02.md), 답신 = [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). D-018~D-023. V6. 첫 `RowMapper` |
-| M9 | **마감** — 관리자 화면 · `ended_at` · 회고 (+JPA 조각 선택) | **작성됨** (09-02) | [plans/M9.md](plans/M9.md) | [M9-check.md](M9-check.md) | **D-025~D-027.** `static/admin.html`, `GET /stats/chapters/{id}/overview`, `completedPlaythroughs`, [RETRO.md](RETRO.md). 테스트 120 |
+| M9 | **마감** — 관리자 화면 · `ended_at` · 회고 (+JPA 조각 선택) | **검증됨** (09-02) | [plans/M9.md](plans/M9.md) | [M9-check.md](M9-check.md) | **D-025~D-027.** `static/admin.html`, `GET /stats/chapters/{id}/overview`, `completedPlaythroughs`, [RETRO.md](RETRO.md). 테스트 120 |
 
 ## 지금
 
-- 위치: **M9 작성됨** (2026-09-02 밤). D-027 로 M9 = 마감. 들어간 것:
+- 위치: **M9 검증됨** (2026-09-02 밤) — §0 120건, §1 seed 대조, §2 실데이터 전부 통과. `feat(M9)` 커밋이 실습3 서버의 마지막 커밋이다. 들어간 것:
   - **M9-1 관리자 화면** `static/admin.html` — 키 한 번(sessionStorage), 챕터·버전 선택(공개 GET), 개요 카드 5, 선택 비율(막대), 이벤트 도달률. 숫자는 전부 서버가 만든다.
   - **챕터 개요 엔드포인트** `GET /stats/chapters/{id}/overview?version=` (`chapter_overview.sql`, `ChapterOverview`) + 요약 `completedPlaythroughs`. 테스트 +4 → **120**.
   - **D-025** 끝낸 회차 = `chapter_completed`(`ended_at` 은 유산 표시), **D-026** 에피소드 id 안정 규칙(마이그레이션 API 폐기), **D-027** M9 재정의(JPA 는 한 조각 대조로, 선택).
   - **RETRO.md** — M 별 믿었다/틀렸다/고쳤다, 관통 교훈 여섯, 숫자, 다음에 다르게 할 것, 면접 세 문장.
 - M8-B(Unity): 검토서 §2 둘 반영 → `m8b-check.md` 실행 → 답신 → 커밋. D-023 명시적 결정 한 줄 대기. M9 와 독립.
-- 다음 (아미야): ① `.\gradlew.bat cleanTest test` → **120건** → ② `bootRun` + `http://localhost:8080/admin.html` 을 seed 로 대조(M9-check §1) → ③ 커밋 `feat(M9): …` → **실습3 종료.** ④ (선택) M9-4 JPA 조각 — plans/M9.md §6.
+- 다음 (아미야): 커밋 `feat(M9): 관리자 통계 화면 + 챕터 개요, D-025~D-027, 회고` → **서버 종료.** 서버 밖에 남은 것: M8-B 검토 §2 둘 반영 → `m8b-check.md` → 답신 → Unity 커밋; D-023 "권장대로" 한 줄; (선택) M9-4 — plans/M9.md §6.
 
 ## 점검 이력
 

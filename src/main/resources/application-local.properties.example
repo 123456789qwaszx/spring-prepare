@@ -1,0 +1,10 @@
+# 개발용 프로필 (D-002, D-013). 이 파일을 복사해 application-local.properties 로 만들고 CHANGE_ME 둘을 채운다.
+# application-local.properties 는 .gitignore 되어 있다. application.properties 가 spring.profiles.active=local 로 이 파일을 읽는다.
+#
+# 시간대 (D-009): DB 의 모든 절대 시각은 UTC 다. 두 옵션 다 필요하다 — application-test.properties.example 의 설명 참조.
+spring.datasource.url=jdbc:mysql://localhost:3306/game?connectionTimeZone=UTC&forceConnectionTimeZoneToSession=true
+spring.datasource.username=root
+spring.datasource.password=CHANGE_ME
+
+# 관리자 키 (D-013). /content POST 와 /stats/** 가 이 값을 X-Admin-Key 헤더로 요구한다. 비우면 기동이 실패한다 — 의도한 것.
+app.admin-key=CHANGE_ME
