@@ -85,6 +85,8 @@ SET SQL_SAFE_UPDATES = 0;
 -- sessions 는 M6 에서 생겼다 (V5). users 를 참조하므로 users 보다 먼저 지운다.
 -- (token 이 PK 라 AUTO_INCREMENT 재설정은 필요 없다.)
 DELETE FROM sessions;
+DELETE FROM bookmarks;                              -- M8-A (V6)
+UPDATE playthroughs SET forked_from_id = NULL;      -- M8-A: 자기 참조 FK 를 먼저 끊어야 아래 DELETE 가 통과한다
 DELETE FROM choice_history;
 DELETE FROM event_log;
 DELETE FROM save_slots;
@@ -106,6 +108,7 @@ ALTER TABLE playthroughs     AUTO_INCREMENT = 1;
 ALTER TABLE save_slots       AUTO_INCREMENT = 1;
 ALTER TABLE choice_history   AUTO_INCREMENT = 1;
 ALTER TABLE event_log        AUTO_INCREMENT = 1;
+ALTER TABLE bookmarks        AUTO_INCREMENT = 1;   -- M8-A (V6)
 
 -- ── 2. 사용자 5명 (id 1~5) ────────────────────────────────────────
 -- 비밀번호는 전부 문자열 'seed-only' 의 BCrypt 해시다 (M6-3b).

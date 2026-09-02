@@ -32,6 +32,7 @@ public final class DbCleaner {
      */
     private static final List<String> TABLES_CHILD_FIRST = List.of(
             "sessions",           // M6 (V5). users 를 참조하므로 users 보다 앞 — 다른 자식과는 무관해 맨 앞에 둔다
+            "bookmarks",          // M8-A (V6). users·chapter_contents·playthroughs 를 참조 — 셋보다 앞
             "choice_history",
             "event_log",
             "save_slots",
@@ -50,6 +51,10 @@ public final class DbCleaner {
     }
 
     public void clean() {
+        // playthroughs 는 자기 자신을 참조한다(forked_from_id, V6). 부모 행이 자식보다 먼저 지워지면 FK 가 막으므로
+        // 링크를 먼저 끊는다 — 한 문장이고, seed.sql 도 같은 줄을 가진다.
+        jdbc.sql("UPDATE playthroughs SET forked_from_id = NULL").update();
+
         for (String table : TABLES_CHILD_FIRST) {
             // 테이블명은 상수 목록에서만 오므로 문자열 결합이 안전하다. 바인딩 파라미터는 식별자에 쓸 수 없다.
             jdbc.sql("DELETE FROM " + table).update();

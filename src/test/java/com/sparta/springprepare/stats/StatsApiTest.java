@@ -170,6 +170,7 @@ class StatsApiTest {
                 .andExpect(jsonPath("$.userId").value(1))
                 .andExpect(jsonPath("$.username").value("amiya"))
                 .andExpect(jsonPath("$.playthroughs").value(4))
+                .andExpect(jsonPath("$.forks").value(0))            // seed 회차는 전부 뿌리다 (M8-A, D-020). 갈래가 세어지는 쪽은 PlaythroughApiTest
                 .andExpect(jsonPath("$.endedPlaythroughs").value(4))
                 .andExpect(jsonPath("$.saveSlots").value(4))
                 .andExpect(jsonPath("$.choices").value(40))

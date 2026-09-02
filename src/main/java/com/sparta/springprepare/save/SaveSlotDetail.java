@@ -22,6 +22,9 @@ public record SaveSlotDetail(
         String currentEpisodeId,
         Long revision,
         Integer playSeconds,
+        Integer inheritedPlaySeconds,
+        Integer ownPlaySeconds,
+        Boolean chapterCompleted,
         OffsetDateTime updatedAt,
         String device,
         @JsonRawValue String snapshot) {

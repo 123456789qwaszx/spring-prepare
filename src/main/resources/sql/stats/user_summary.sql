@@ -2,7 +2,8 @@
 --  사용자 요약 — GET /users/{userId}/summary
 -- =====================================================================
 --  정의:
---    playthroughs        이 사용자의 회차 수
+--    playthroughs        이 사용자의 회차 수 — **갈래(줄) 단위**. 갈라진 회차도 하나로 센다 (M8-A, D-020)
+--    forks               그중 갈라진 것(forked_from_client_id 가 있는 것). playthroughs - forks = 뿌리 수
 --    endedPlaythroughs   그중 ended_at 이 있는 것
 --    saveSlots           회차들이 가진 슬롯의 총합
 --    choices             슬롯들에 쌓인 선택의 총합
@@ -36,6 +37,9 @@
 SELECT u.id                                                        AS userId,
        u.username                                                  AS username,
        COUNT(DISTINCT p.id)                                        AS playthroughs,
+       -- 뿌리 판정은 forked_from_id 가 아니라 forked_from_client_id 로 한다 (D-020):
+       -- 부모가 아직 서버에 안 온 갈래는 forked_from_id 가 NULL 이라 뿌리로 잘못 세어진다.
+       COUNT(DISTINCT CASE WHEN p.forked_from_client_id IS NOT NULL THEN p.id END) AS forks,
        COUNT(DISTINCT CASE WHEN p.ended_at IS NOT NULL THEN p.id END) AS endedPlaythroughs,
        COUNT(DISTINCT s.id)                                        AS saveSlots,
        -- 아래 둘은 팬아웃을 피해 따로 센다 (위 주석 참조)

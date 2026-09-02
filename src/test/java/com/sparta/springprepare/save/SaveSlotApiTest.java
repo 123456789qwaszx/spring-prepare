@@ -266,7 +266,66 @@ class SaveSlotApiTest {
                 .andExpect(jsonPath("$.revision").value(2));
     }
 
+    // ── M8-A: 시간 둘·챕터 완료 (핸드오프 R4), 스냅샷 상한 (D-022) ─────
+
+    @Test
+    void 시간_둘과_챕터_완료는_왕복하고_생략하면_0과_false다() throws Exception {
+        // 슬롯 1: F6 클라의 형식 — 셋을 다 보낸다. playSeconds 는 여전히 둘의 합이다.
+        mockMvc.perform(putSlot(1, """
+                {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP02_01",
+                 "snapshot":%s,"playSeconds":120,"deviceKey":"device-A","baseRevision":0,
+                 "inheritedPlaySeconds":100,"ownPlaySeconds":20,"chapterCompleted":true}
+                """.formatted(SNAPSHOT)))
+                .andExpect(status().isOk());
+        // 슬롯 2: F6 전 형식 — 셋이 없다. 컬럼 DEFAULT 가 아니라 요청 record 의 OrZero/OrFalse 가 채운다.
+        mockMvc.perform(putSlot(2, body("qwer", 1, "EP01", 10, "device-A")))
+                .andExpect(status().isOk());
+
+        mockMvc.perform(get("/playthroughs/{pid}/saves", playthroughId).header("Authorization", bearer))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].inheritedPlaySeconds").value(100))
+                .andExpect(jsonPath("$[0].ownPlaySeconds").value(20))
+                .andExpect(jsonPath("$[0].playSeconds").value(120))
+                .andExpect(jsonPath("$[0].chapterCompleted").value(true))
+                .andExpect(jsonPath("$[1].inheritedPlaySeconds").value(0))
+                .andExpect(jsonPath("$[1].ownPlaySeconds").value(0))
+                .andExpect(jsonPath("$[1].chapterCompleted").value(false));
+
+        // 단건(복구용)에도 같은 셋이 있다 — 목록과 단건이 같은 컬럼 목록을 쓴다는 확인.
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1).header("Authorization", bearer))
+                .andExpect(jsonPath("$.inheritedPlaySeconds").value(100))
+                .andExpect(jsonPath("$.chapterCompleted").value(true))
+                .andExpect(jsonPath("$.snapshot.nodeName").value("qwer_EP02_01"));
+    }
+
+    @Test
+    void 스냅샷은_1_048_576_바이트까지_받고_하나_넘으면_413이다() throws Exception {
+        // 서버가 재는 것은 요청 본문이 아니라 스냅샷을 다시 직렬화한 UTF-8 바이트다 (SnapshotLimit).
+        // {"blob":"…"} 는 문자열 밖 11 바이트 — 그래서 a 를 1,048,565 개 넣으면 정확히 상한이다.
+        String atLimit = "{\"blob\":\"" + "a".repeat(1_048_565) + "\"}";
+        String overByOne = "{\"blob\":\"" + "a".repeat(1_048_566) + "\"}";
+
+        mockMvc.perform(putSlot(1, bodyWithSnapshot(0, atLimit)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(1));
+
+        mockMvc.perform(putSlot(1, bodyWithSnapshot(1, overByOne)))
+                .andExpect(status().isContentTooLarge())
+                .andExpect(jsonPath("$.code").value("PAYLOAD_TOO_LARGE"));
+
+        // 413 은 아무것도 바꾸지 않는다 — revision 그대로.
+        mockMvc.perform(get("/playthroughs/{pid}/saves/{slotNo}", playthroughId, 1).header("Authorization", bearer))
+                .andExpect(jsonPath("$.revision").value(1));
+    }
+
     // ── helper ──────────────────────────────────────────────────────
+
+    private static String bodyWithSnapshot(long baseRevision, String snapshotJson) {
+        return """
+                {"chapterId":"qwer","chapterVersion":1,"currentEpisodeId":"EP01",
+                 "snapshot":%s,"playSeconds":0,"baseRevision":%d}
+                """.formatted(snapshotJson, baseRevision);
+    }
 
     private org.springframework.test.web.servlet.request.MockHttpServletRequestBuilder putSlot(
             int slotNo, String jsonBody) {

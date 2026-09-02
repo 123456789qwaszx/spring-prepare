@@ -18,6 +18,9 @@ public record SaveSlotSummary(
         String currentEpisodeId,
         Long revision,
         Integer playSeconds,
+        Integer inheritedPlaySeconds,
+        Integer ownPlaySeconds,
+        Boolean chapterCompleted,
         OffsetDateTime updatedAt,
         String device) {
 }

@@ -350,6 +350,45 @@ class SaveHistoryApiTest {
         assertThat(count("choice_history")).isZero();
     }
 
+    @Test
+    void 장면_단위로_접힌_큰_배치도_한_요청에_다_들어간다() throws Exception {
+        // M8 핸드오프 §1: Unity 가 장면(scene) 단위로 접어 보내므로 한 PUT 의 choices 가 수십~수백이 된다.
+        // 서버 코드는 바뀌지 않았다 — 바뀌지 않았음을 실물 크기로 확인하는 테스트다 (plans/M8 §4-A "바뀌지 않는 것").
+        // 300 = 클라 백로그 상한과 같은 수. 이벤트는 회차당 1회(D-011)라 키가 있는 에피소드 둘만.
+        StringBuilder choices = new StringBuilder("\"choices\":[");
+        String[] episodes = {"EP01", "EP02_01", "EP03_01"};
+        for (int seq = 1; seq <= 300; seq++) {
+            if (seq > 1) choices.append(',');
+            choices.append("{\"seq\":").append(seq)
+                    .append(",\"episodeId\":\"").append(episodes[seq % 3])
+                    .append("\",\"optionIndex\":").append(seq % 2)
+                    .append(",\"chosenAt\":\"2026-08-29T11:00:07Z\"}");
+        }
+        choices.append("],\"events\":[")
+                .append("{\"episodeId\":\"EP03_01\",\"occurredAt\":\"2026-08-29T11:30:17Z\"},")
+                .append("{\"episodeId\":\"EP04_01\",\"occurredAt\":\"2026-08-29T11:31:17Z\"}]");
+
+        mockMvc.perform(putSlot(1, bodyWith(choices.toString())))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.acceptedChoices").value(300))
+                .andExpect(jsonPath("$.acceptedEvents").value(2));
+
+        assertThat(count("choice_history")).isEqualTo(300);
+        assertThat(count("event_log")).isEqualTo(2);
+
+        // 이어서 다음 장면 — 큐는 지난 PUT 이후의 선택만 싣는다(seq 이어짐). 서버는 그것을 그냥 덧붙인다.
+        mockMvc.perform(putSlot(1, bodyWith(1, """
+                "choices":[
+                  {"seq":301,"episodeId":"EP01","optionIndex":0,"chosenAt":"2026-08-29T12:00:07Z"},
+                  {"seq":302,"episodeId":"EP02_01","optionIndex":0,"chosenAt":"2026-08-29T12:00:09Z"}
+                ]
+                """)))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.revision").value(2))
+                .andExpect(jsonPath("$.acceptedChoices").value(2));
+        assertThat(count("choice_history")).isEqualTo(302);
+    }
+
     // ── 수입한 콘텐츠와의 연결 ───────────────────────────────────────
 
     @Test

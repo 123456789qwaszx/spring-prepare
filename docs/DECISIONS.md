@@ -462,6 +462,8 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
   아니라 서비스에서 재는 이유: Tomcat 은 JSON 본문에 상한을 두는 스위치가 없고, 스냅샷만 재는 것이 뜻에 맞다
   (choices 배열이 큰 것은 다른 문제다). 클라는 백로그 300줄 상한으로 그 아래에 머문다.
 - 결과: 예외 클래스 하나, 핸들러 한 줄, 상수 하나(`SaveSlotService`·`BookmarkService` 공유), 테스트 둘.
+- 구현 각주 (09-02): Spring 7 은 `HttpStatus.PAYLOAD_TOO_LARGE` 를 deprecated 로 두고 `CONTENT_TOO_LARGE`(RFC 9110 의 새 이름)를 권한다.
+  enum 은 그쪽을 쓰고 **code 문자열은 이 결정대로 `PAYLOAD_TOO_LARGE`** — 계약은 상태 번호와 code 이지 enum 이름이 아니다. 테스트 매처도 `isContentTooLarge()`.
 
 ---
 

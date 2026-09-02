@@ -39,11 +39,17 @@ public class SaveSlotRepository {
     private static final String INSERT = """
             INSERT INTO save_slots
                 (playthrough_id, slot_no, chapter_content_id, current_episode_id,
-                 snapshot, revision, play_seconds, device_id)
+                 snapshot, revision, play_seconds, device_id,
+                 inherited_play_seconds, own_play_seconds, chapter_completed)
             VALUES
                 (:playthroughId, :slotNo, :chapterContentId, :currentEpisodeId,
-                 :snapshot, 1, :playSeconds, :deviceId)
+                 :snapshot, 1, :playSeconds, :deviceId,
+                 :inheritedPlaySeconds, :ownPlaySeconds, :chapterCompleted)
             """;
+
+    /** M8-A 가 더한 열 셋을 한 묶음으로 나른다 — insert·update 의 인자 목록이 열 개를 넘지 않게. */
+    public record Extras(int inheritedPlaySeconds, int ownPlaySeconds, boolean chapterCompleted) {
+    }
 
     /**
      * revision 에 1 을 직접 넣는다. 컬럼 DEFAULT 는 0 이라 그것에 맡기면 첫 업로드가 revision 0 이 된다
@@ -55,7 +61,8 @@ public class SaveSlotRepository {
      * 다듬는 것은 M6 (에러 형식 통일)의 몫으로 둔다.
      */
     public void insert(long playthroughId, int slotNo, long chapterContentId,
-                       String currentEpisodeId, String snapshotJson, int playSeconds, Long deviceId) {
+                       String currentEpisodeId, String snapshotJson, int playSeconds, Long deviceId,
+                       Extras extras) {
         jdbc.sql(INSERT)
                 .param("playthroughId", playthroughId)
                 .param("slotNo", slotNo)
@@ -64,6 +71,9 @@ public class SaveSlotRepository {
                 .param("snapshot", snapshotJson)
                 .param("playSeconds", playSeconds)
                 .param("deviceId", deviceId)     // null 허용 — deviceKey 를 안 보낸 경우
+                .param("inheritedPlaySeconds", extras.inheritedPlaySeconds())
+                .param("ownPlaySeconds", extras.ownPlaySeconds())
+                .param("chapterCompleted", extras.chapterCompleted())
                 .update();
     }
 
@@ -95,19 +105,23 @@ public class SaveSlotRepository {
      */
     private static final String UPDATE_IF_REVISION = """
             UPDATE save_slots
-            SET chapter_content_id = :chapterContentId,
-                current_episode_id = :currentEpisodeId,
-                snapshot           = :snapshot,
-                play_seconds       = :playSeconds,
-                device_id          = :deviceId,
-                revision           = revision + 1
+            SET chapter_content_id     = :chapterContentId,
+                current_episode_id     = :currentEpisodeId,
+                snapshot               = :snapshot,
+                play_seconds           = :playSeconds,
+                device_id              = :deviceId,
+                inherited_play_seconds = :inheritedPlaySeconds,
+                own_play_seconds       = :ownPlaySeconds,
+                chapter_completed      = :chapterCompleted,
+                revision               = revision + 1
             WHERE playthrough_id = :playthroughId
               AND slot_no        = :slotNo
               AND revision       = :baseRevision
             """;
 
     public int updateIfRevision(long playthroughId, int slotNo, long baseRevision, long chapterContentId,
-                                String currentEpisodeId, String snapshotJson, int playSeconds, Long deviceId) {
+                                String currentEpisodeId, String snapshotJson, int playSeconds, Long deviceId,
+                                Extras extras) {
         return jdbc.sql(UPDATE_IF_REVISION)
                 .param("playthroughId", playthroughId)
                 .param("slotNo", slotNo)
@@ -117,6 +131,9 @@ public class SaveSlotRepository {
                 .param("snapshot", snapshotJson)
                 .param("playSeconds", playSeconds)
                 .param("deviceId", deviceId)
+                .param("inheritedPlaySeconds", extras.inheritedPlaySeconds())
+                .param("ownPlaySeconds", extras.ownPlaySeconds())
+                .param("chapterCompleted", extras.chapterCompleted())
                 .update();
     }
 
@@ -147,6 +164,9 @@ public class SaveSlotRepository {
                    s.current_episode_id,
                    s.revision,
                    s.play_seconds,
+                   s.inherited_play_seconds,
+                   s.own_play_seconds,
+                   s.chapter_completed,
                    s.updated_at,
                    d.device_key AS device
             FROM save_slots s
@@ -172,6 +192,9 @@ public class SaveSlotRepository {
                    s.current_episode_id,
                    s.revision,
                    s.play_seconds,
+                   s.inherited_play_seconds,
+                   s.own_play_seconds,
+                   s.chapter_completed,
                    s.updated_at,
                    d.device_key AS device
             FROM save_slots s
@@ -195,6 +218,9 @@ public class SaveSlotRepository {
                    s.current_episode_id,
                    s.revision,
                    s.play_seconds,
+                   s.inherited_play_seconds,
+                   s.own_play_seconds,
+                   s.chapter_completed,
                    s.updated_at,
                    d.device_key AS device,
                    s.snapshot

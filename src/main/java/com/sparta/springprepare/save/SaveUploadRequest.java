@@ -39,7 +39,24 @@ public record SaveUploadRequest(
         String deviceKey,
         Long baseRevision,
         List<ChoiceUpload> choices,
-        List<EventUpload> events) {
+        List<EventUpload> events,
+        // ── M8-A (핸드오프 R4) — 전부 선택. 안 보내면 0 / false. F6 전 클라와의 호환을 위해 필수로 두지 않는다.
+        //    playSeconds 는 그대로 "둘의 합"이다. 셋 다 목록·통계가 스냅샷을 열지 않고 그리기 위한 값이다.
+        Integer inheritedPlaySeconds,
+        Integer ownPlaySeconds,
+        Boolean chapterCompleted) {
+
+    public int inheritedPlaySecondsOrZero() {
+        return inheritedPlaySeconds == null ? 0 : inheritedPlaySeconds;
+    }
+
+    public int ownPlaySecondsOrZero() {
+        return ownPlaySeconds == null ? 0 : ownPlaySeconds;
+    }
+
+    public boolean chapterCompletedOrFalse() {
+        return chapterCompleted != null && chapterCompleted;
+    }
 
     /** null 을 빈 목록으로 접는다 — 호출부마다 null 검사를 반복하지 않기 위해. */
     public List<ChoiceUpload> choicesOrEmpty() {

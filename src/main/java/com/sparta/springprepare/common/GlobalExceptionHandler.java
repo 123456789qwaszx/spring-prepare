@@ -128,6 +128,18 @@ public class GlobalExceptionHandler {
                 .body(ErrorResponse.of("MALFORMED_JSON", "요청 본문이 올바른 JSON 이 아닙니다."));
     }
 
+    /**
+     * 스냅샷 상한 초과 → 413 (M8-A, D-022). 400 이 아닌 이유: 본문이 틀린 게 아니라 <b>큰</b> 것이고,
+     * 클라가 할 일이 "고쳐 보내라"가 아니라 "줄여 보내라"다. 상태 코드가 그 차이를 말한다.
+     */
+    @ExceptionHandler(PayloadTooLargeException.class)
+    public ResponseEntity<ErrorResponse> handleTooLarge(PayloadTooLargeException e) {
+        // 413 의 이름이 RFC 9110 에서 "Content Too Large" 로 바뀌어 Spring 7 은 PAYLOAD_TOO_LARGE 를 deprecated 로 뒀다.
+        // code 문자열은 D-022 대로 PAYLOAD_TOO_LARGE 를 유지한다 — 계약은 상태 번호와 code 이지 enum 이름이 아니다.
+        return ResponseEntity.status(HttpStatus.CONTENT_TOO_LARGE)
+                .body(ErrorResponse.of("PAYLOAD_TOO_LARGE", e.getMessage()));
+    }
+
     /** 경로·쿼리 값의 타입 불일치(/users/abc 의 abc → long 실패) → 400. */
     @ExceptionHandler(MethodArgumentTypeMismatchException.class)
     public ResponseEntity<ErrorResponse> handleTypeMismatch(MethodArgumentTypeMismatchException e) {

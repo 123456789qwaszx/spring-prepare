@@ -4,6 +4,7 @@ import com.sparta.springprepare.common.BadRequestException;
 import com.sparta.springprepare.common.ConflictException;
 import com.sparta.springprepare.common.ForbiddenException;
 import com.sparta.springprepare.common.NotFoundException;
+import com.sparta.springprepare.common.SnapshotLimit;
 import com.sparta.springprepare.content.ChapterContentRepository;
 import com.sparta.springprepare.content.ChapterEpisode;
 import com.sparta.springprepare.content.ChapterEpisodeRepository;
@@ -161,7 +162,12 @@ public class SaveSlotService {
         List<EventUpload> newEvents = withoutExistingEvents(playthroughId, events, eventKeyByEpisode);
 
         String snapshotJson = objectMapper.writeValueAsString(request.snapshot());
+        // 크기만 본다 — 내용은 여전히 열지 않는다 (D-022). 존재 검증(위) 뒤, 쓰기(아래) 앞.
+        SnapshotLimit.check(snapshotJson, "snapshot");
         int playSeconds = request.playSeconds() == null ? 0 : request.playSeconds();
+        // M8-A 의 열 셋. 안 보내면 0 / false (F6 전 클라 호환).
+        SaveSlotRepository.Extras extras = new SaveSlotRepository.Extras(
+                request.inheritedPlaySecondsOrZero(), request.ownPlaySecondsOrZero(), request.chapterCompletedOrFalse());
 
         Optional<SaveSlotState> found = saveSlotRepository.findState(playthroughId, slotNo);
 
@@ -173,7 +179,7 @@ public class SaveSlotService {
             }
             Long deviceId = resolveDevice(playthrough, request);
             saveSlotRepository.insert(playthroughId, slotNo, chapterContentId,
-                    request.currentEpisodeId(), snapshotJson, playSeconds, deviceId);
+                    request.currentEpisodeId(), snapshotJson, playSeconds, deviceId, extras);
             SaveSlotState created = reloadState(playthroughId, slotNo);
             // 신규 슬롯이어도 이벤트는 걸러진 것(newEvents)을 넣는다 — 이벤트는 슬롯이 아니라
             // **회차**에 속하므로, 다른 슬롯이 이미 기록한 EventKey 와 겹칠 수 있다.
@@ -192,7 +198,7 @@ public class SaveSlotService {
         // ── 정상 / 충돌 ─────────────────────────────────────────────
         Long deviceId = resolveDevice(playthrough, request);
         int affected = saveSlotRepository.updateIfRevision(playthroughId, slotNo, base, chapterContentId,
-                request.currentEpisodeId(), snapshotJson, playSeconds, deviceId);
+                request.currentEpisodeId(), snapshotJson, playSeconds, deviceId, extras);
         if (affected == 0) {
             // 지금 서버가 어떤 상태인지를 함께 준다 — 클라가 다시 GET 하는 왕복을 아끼고,
             // 그 사이 또 바뀔 여지도 없앤다. 이 필드들이 M8 충돌 UI 가 보여줄 것이다.
