@@ -1,8 +1,9 @@
 # M7 검증 절차 — Unity 저장 포트
 
-> PLAN §2.6. 결과는 §6 표에. 선행: M6 `검증됨`, D-015·D-016·D-017, Unity 레포에 M7 코드 17파일 반영.
+> PLAN §2.6. 결과는 §6 표에. 선행: M6 `검증됨`, D-015·D-016·D-017, Unity 레포에 M7 코드 21파일 반영.
 > **이번 M의 무대는 Unity 에디터다.** 서버 레포에서는 기동과 DB 확인만 한다.
 > 완료 기준(계획서 §7): ① 비행기 모드 선택 5개 → 온라인 → `choice_history` 5행 seq 연속, ② 강제 종료 후 재실행 → 로컬에서 이어짐 + 큐 유지.
+> **DB 질의는 반드시 이번 회차로 거른다** — `game` 에는 seed(회차 20·선택 200)와 지난 검증의 행이 남아 있다 (§1-A).
 
 창은 **Unity 에디터**, **터미널 ①**(bootRun), **터미널 ②**(API·파일 확인), **Workbench** 넷이다.
 
@@ -10,7 +11,8 @@
 
 ## 0. 사전 준비
 
-**(a) 서버 기동** (터미널 ①): M6-check §1 과 같다 — `.\gradlew.cmd bootRun`. Flyway `game` 확인.
+**(a) 서버 기동** (터미널 ①): M6-check §1 과 같다 — `.\gradlew.bat bootRun`. Flyway `game` 확인.
+(래퍼 파일명은 `gradlew.bat` 이다 — `.cmd` 가 아니다. M0~M6 전부 `.bat`.)
 
 **(b) 콘텐츠 수입 — 반드시 Unity 에셋 파일 그대로** (터미널 ②):
 
@@ -53,12 +55,54 @@ dir $SAVE
 | 1.2 | `$SAVE\account.json` | `username: guest-<12hex>`, `userId`, `token`, `expiresAtUtc` 채워짐 |
 | 1.3 | `$SAVE\saves\slot1.json` | `chapterId: qwer`, 마지막 선택의 도착 에피소드, `stats` |
 | 1.4 | `$SAVE\saves\sync_queue.json` | `pendingChoices: []` (다 나갔다), `nextSeq: 3`, `baseRevision`·`playthroughId` 채워짐 |
-| 1.5 | Workbench: `SELECT seq, episode_id, option_index FROM choice_history ORDER BY seq;` | 2행, seq 1·2 연속 |
-| 1.6 | `SELECT username FROM users;` | `guest-…` 1행 (+ 기존 seed 가 있으면 그 행) |
+| 1.5 | Workbench: 아래 **§1-A 의 회차 한정 질의** | 이번 회차의 선택 수만큼, seq 1 부터 연속 |
+| 1.6 | `SELECT id, username FROM users ORDER BY id DESC LIMIT 3;` | 맨 위가 `guest-…` |
+
+### §1-A. 이 회차만 보는 질의 — **필터 없는 조회는 쓸모가 없다**
+
+`game` 에는 seed(회차 20·선택 200)와 M2~M6 수동 검증이 남긴 행이 이미 있다.
+`SELECT … FROM choice_history ORDER BY seq` 는 그 전부를 섞어 내놓는다 —
+같은 seq 가 스무 번씩 나오는 것은 고장이 아니라 **질의가 틀린 것**이다
+(M5 의 "분모가 전체 회차" 사건과 같은 계보 — 이 DB 는 비어 있지 않다).
+
+콘솔의 `[동기화] 회차 생성 — playthroughId N` 을 `@PT` 에 넣고 이 질의를 쓴다:
+
+```sql
+SET @PT = 22;   -- 콘솔이 알려준 playthroughId
+
+SELECT ch.seq, ch.episode_id, ch.option_index, ch.chosen_at
+FROM choice_history ch
+JOIN save_slots s ON s.id = ch.save_slot_id
+WHERE s.playthrough_id = @PT
+ORDER BY ch.seq;
+```
+
+이벤트는 회차에 직접 달려 있어 조인이 필요 없다:
+
+```sql
+SELECT episode_id, event_key, occurred_at FROM event_log WHERE playthrough_id = @PT ORDER BY id;
+```
 
 ## 2. 비행기 모드 — 완료 기준 ①
 
-**터미널 ① 에서 서버를 끈다** (Ctrl+C). 플레이 계속 — **선택 5개** 커밋.
+**터미널 ① 에서 서버를 끈다** (Ctrl+C).
+
+**끈 다음 정말 죽었는지 확인한다** (터미널 ②) — 이 확인을 건너뛰면 §2 는 아무것도 검증하지 못한다:
+
+```powershell
+Invoke-RestMethod http://localhost:8080/content/chapters
+```
+
+`연결할 수 없습니다`(연결 거부)가 나야 한다. **JSON 이 돌아오면 서버는 살아 있다.**
+`bootRun` 은 Gradle **데몬**이 띄운 자식 JVM 이라, Ctrl+C 가 콘솔의 Gradle 클라이언트만 끊고
+스프링 프로세스는 그대로 도는 일이 흔하다. 그때는 포트를 쥔 프로세스를 직접 끝낸다:
+
+```powershell
+netstat -ano | findstr :8080     # 마지막 열이 PID
+taskkill /PID <PID> /F
+```
+
+`Invoke-RestMethod` 가 연결 거부를 낼 때까지 확인한 뒤에 플레이를 이어간다 — **선택 5개** 커밋.
 
 | # | 확인 | 기대 |
 |---|---|---|
@@ -72,7 +116,7 @@ dir $SAVE
 | # | 확인 | 기대 |
 |---|---|---|
 | 2.5 | 콘솔 | Start 의 잔여 큐 동기화: `[동기화] 완료 — … 선택 5건` |
-| 2.6 | `choice_history` | 7행, seq 1~7 연속 — **완료 기준 ① 충족** |
+| 2.6 | §1-A 질의 (회차 한정) | §1 의 선택 수 + 5행, **seq 가 1 부터 빈 칸 없이 연속** — **완료 기준 ① 충족**. 연속성이 핵심이다(오프라인에서 발급한 seq 가 하나도 안 빠졌다는 뜻) |
 | 2.7 | `sync_queue.json` | `pendingChoices: []`, `baseRevision` 증가 |
 
 ## 3. 강제 종료 후 재개 — 완료 기준 ②
@@ -94,7 +138,7 @@ dir $SAVE
 |---|---|---|
 | 3-1.1 | 콘솔 | `[저장] 새 게임 — 세이브·큐 초기화.` 그리고 `[진행] 챕터 시작 — qwer/EP01` (재개 로그 없음) |
 | 3-1.2 | 첫 선택 커밋 후 콘솔 | `[동기화] 회차 생성 — playthroughId N+1` — **새 회차**, `sync_queue.json` 의 `nextSeq` 가 2, `baseRevision` 이 새 슬롯의 1 |
-| 3-1.3 | Workbench: `SELECT id, ended_at FROM playthroughs;` | 회차 2행, 둘 다 `ended_at` NULL (이전 회차 종료는 뒤 M) |
+| 3-1.3 | Workbench: `SELECT id, user_id, ended_at FROM playthroughs WHERE user_id = <게스트 userId> ORDER BY id;` | 이 게스트의 회차 2행(이전 것과 새 것), 둘 다 `ended_at` NULL (이전 회차 종료는 뒤 M). **`user_id` 로 거르지 않으면 seed 회차 20개가 같이 나온다** |
 | 3-1.4 | (오프라인에서 5번) 큐에 미전송이 있었다면 | `[저장] 새 게임 — 서버에 못 보낸 이력 N건을 버린다.` 경고 후 진행 — 버리는 것이 로그로 드러난다 |
 
 ## 4. 이벤트 경로와 흡수 (주의: 실물 에셋은 EventKey 가 전부 빈 문자열)
@@ -121,6 +165,17 @@ Yarn 노드가 같아서 Unity 프리플라이트도 통과한다.
 |---|---|---|
 | 4.2 | (선택) 에셋 자체를 한 바이트 고치고 플레이 (수입은 안 함) | 콘솔 경고 `일치하는 서버 버전이 없다` + 동기화만 선다(큐 보존) — 로컬 저장은 계속. 확인 후 되돌린다 (D-015 의 "조용히 틀리지 않는다") |
 
+## 4-1. 서버 테스트 (F44 포함)
+
+터미널 ① 에서 서버를 멈추고:
+
+```powershell
+.\gradlew.bat cleanTest test
+```
+
+**97건 전부 PASSED** 기대 — M6 의 96건 + F44 잔손질의 `서비스_층에서_파싱하는_경로의_깨진_JSON도_MALFORMED_JSON이다` 1건.
+`cleanTest` 를 반드시 붙인다 (README 규칙 8, M2 F21).
+
 ## 5. 이 문서가 검증하지 않는 것
 
 - **409 충돌 해소** — `ConflictDetected` 는 로그만 남긴다. 두 기기 시나리오는 M8.
@@ -131,11 +186,12 @@ Yarn 노드가 같아서 Unity 프리플라이트도 통과한다.
 
 | 절 | 결과 | 비고 |
 |---|---|---|
-| §1 온라인 첫 플레이 | | |
-| §2 비행기 모드 (기준 ①) | | |
-| §3 강제 종료 재개 (기준 ②) | | |
+| §1 온라인 첫 플레이 | **통과** (09-01) | 계정 `guest-3946c4e356d2`(userId 7) → 회차 22 → `'qwer' = 서버 v2 (checksum 일치)` → revision 1. 선택 1건으로 진행(문서는 2건이라 적었으나 수와 무관). 파일 셋 전부 기대대로 — 특히 `pendingChoices: []`(다 나감), `nextSeq: 2`, `baseRevision: 1`. **시각이 전부 UTC** 로 찍혔다: `savedAtUtc 05:11:10Z` = 로컬 14:11 (D-009 가 클라 쪽에서도 성립). 토큰 만료도 정확히 24h |
+| §2 비행기 모드 (기준 ①) | **통과** (09-01) | 서버 사망 확인 후 재실행 — seq 연속. 첫 시도는 bootRun 미종료로 무효(§2 절차 추가) |
+| §3 강제 종료 재개 (기준 ②) | **통과** (09-01) | 재개 로그·스탯 보존·큐 생존 확인 (아미야 구두 보고) |
 | §3-1 새 게임 (5번) | | |
-| §4 흡수·불일치 | | |
+| §4 흡수·불일치 | 부분 통과 (09-01) | §4.1 — `pendingEvents: []`. 실물 에셋에 EventKey 가 없으니 이벤트가 하나도 안 나는 것이 정상이고, 그대로였다 |
+| §4-1 서버 테스트 97건 | **통과** (09-01) | 97건 전부 PASSED. F44 의 `서비스_층에서_파싱하는_경로의_깨진_JSON도_MALFORMED_JSON이다` 포함 |
 
 ## 7. 커밋
 

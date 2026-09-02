@@ -364,6 +364,128 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
     출발해 저장값을 덮는다(저장 후 스탯이 추가·삭제·범위 변경돼도 성립).
   - 재개 유효성(챕터·에피소드가 아직 있는가)은 드라이버가 판정하고, 깨졌으면
     경고 후 새 게임 — 조용히 이어 가는 척하지 않는다.
+- **개정 (2026-09-02, D-018)**: 재개 단위가 에피소드에서 **장면 루트**로 올라갔다. "장면 중간 복원은 뒤 M"이
+  그 뒤 M 에서 [3] 스냅샷과 장면 기록으로 해소됐고, 이 항목의 근거 셋 중 "스냅샷을 더해도 서버 변경이 없다"가
+  정확히 그대로 성립했다.
+
+---
+
+## D-018. 클라 저장 모델 개편을 서버의 전제로 받는다 — 장면 단위 커밋, 회차 갈래, 즐겨찾기 (M8 착수)
+
+- 상태: **결정됨** (2026-09-02, Unity 핸드오프 `handoff/unity-2026-09-02.md` 기준, 실물 대조 완료)
+- 배경: M7 검증 뒤 Unity 레포의 저장 모델이 굳었다. 재개 단위 = 장면 루트, 커밋 = 장면 끝에 한 번(fold),
+  롤백 = 장면 안 어디로든(pending 자르기), "확정된 것은 되돌리지 않고 **갈라진다**"(fork), 세이브 슬롯 대신
+  **즐겨찾기**(이력 위의 점, 사본). 서버를 향한 코드(`ServerDtos`·`ServerApi`·`ServerSyncSaveStore`)는 바뀌지
+  않았다 — 핸드오프의 "M2~M6 그대로"를 실물로 확인했다.
+- 결정: **핸드오프 §1~§3 을 그대로 전제로 받는다.** 서버가 새로 배우는 것은 셋뿐이다 — (1) PUT 한 번에 choices
+  가 그 장면의 경로 전부(seq 는 여전히 연속), (2) 회차가 여러 줄(갈래)이 되고 로컬 guid 를 가진다,
+  (3) 즐겨찾기라는 두 번째 스냅샷이 유저에 매달려 온다. 원칙 "서버는 스냅샷을 열지 않고 기록한다"는 그대로다.
+- 판단 근거:
+  - 서버가 이미 가진 것이 개편을 그대로 받는다: `(save_slot_id, seq)` UNIQUE 와 replayed 판정은 배치가 커져도
+    같은 규칙이고, `(playthrough_id, event_key)` UNIQUE(D-011)는 장면 끝에 몰려 와도 같은 흡수다. **M3 에서
+    "클라의 큐 모양이 API 를 정했다"고 했던 것이 여기서 또 맞았다** — 큐가 장면 단위로 커졌을 뿐 모양은 같다.
+  - 갈래는 서버에 "되감기 표식"을 요구하지 않는다(핸드오프 §1.3). 옛 회차는 그대로 남고 새 회차가 seq 1 부터
+    선다 — 회차마다 선형이라는 M3·M5 의 전제가 유지된다. superseded 제외 로직이 필요 없다는 것이 이 모델의
+    가장 큰 서버 쪽 이득이다.
+- 결과: 아래 D-019~D-023 이 핸드오프 §4 R1~R7·§5 D-a~D-h 에 대한 서버의 답이다. M8 의 정의가 바뀐다(D-024).
+
+---
+
+## D-019. 회차 생성은 멱등 — 클라 id 로 (핸드오프 R1)
+
+- 상태: **결정됨** (2026-09-02)
+- 배경: 갈라지기가 회차 생성을 잦게 만들고, 오프라인 뒤 재시도가 서버 회차를 둘 만들면 이력이 갈라진 채 남는다.
+  M7 검증 때 이미 회차 22·26 이 "새 게임" 두 번으로 생겼다 — 지금 POST 는 부르는 만큼 만든다.
+- 결정: `POST /users/{uid}/playthroughs { clientPlaythroughId, forkedFrom? }`.
+  - `playthroughs.client_id VARCHAR(32) NULL` + `UNIQUE (user_id, client_id)`. 같은 키면 **기존 row 를 200 으로**,
+    새로 만들면 201 — M1 의 "같은 파일 재수입은 200"(D-007)과 같은 어법이다.
+  - `clientPlaythroughId` 는 **필수**(없으면 400). 선택으로 두면 "안 보낸 요청은 멱등이 아니다"가 되어 M4 의
+    optional baseRevision 이 그랬을 것과 같은 있으나 마나가 된다. 지금 도는 클라(F6 전)는 이 400 을 맞는다 —
+    **의도한 호환 단절**이고(M6 과 같은 종류), F6 이 곧바로 채운다.
+  - 컬럼이 NULL 허용인 이유는 seed 와 M0~M7 의 기존 회차가 id 없이 남기 때문이다. UNIQUE 는 NULL 을 여럿 허용한다.
+- 판단 근거: 멱등 키는 요청 UUID 가 아니라 **자원의 클라 측 신원**이어야 한다(D-010 이 choices 를 키로 고른
+  것과 같은 이유) — 회차의 신원은 로컬 guid 이고 그것이 파일 이름이다. 32 hex(`Guid.ToString("N")`)라 길이가 고정이다.
+- 결과: `PlaythroughCreateRequest` 신설, `PlaythroughService.create` 가 조회 → 없으면 삽입. 응답 모양은
+  `{playthroughId}` 그대로(클라의 `Ok` 판정이 2xx 라 200/201 을 구분할 필요가 없다).
+
+---
+
+## D-020. 갈래는 클라 id 로 기록하고 서버 id 는 나중에 잇는다 (핸드오프 R1·R2·D-b·D-d)
+
+- 상태: **결정됨** (2026-09-02)
+- 배경: 갈라진 회차의 부모가 서버에 **아직 없을 수 있다**(오프라인에서 새 게임 → 갈라지기 → 온라인). 클라는
+  순서를 보장할 수 없고, 서버가 "모르는 부모"를 거부하면 그 갈래는 영영 못 올라간다(D-b).
+- 결정:
+  - `forked_from_client_id VARCHAR(32) NULL` 은 **항상** 기록한다(갈래면 반드시 온다).
+    `forked_from_id BIGINT NULL`(FK self)은 그 순간 부모가 있으면 채우고, 없으면 비워 둔다.
+    `forked_scene_index INT NULL` 도 그대로 적는다.
+  - **자식 되채우기**: 회차를 새로 만들 때 `UPDATE playthroughs SET forked_from_id = :new WHERE user_id = :uid
+    AND forked_from_client_id = :clientId AND forked_from_id IS NULL` 한 문장을 같은 트랜잭션에 둔다. 도착
+    순서가 어떻든 그래프는 스스로 닫힌다 — 조회 시 조인으로 때우는 것보다 이쪽이 낫다(읽기가 단순해진다).
+  - 갈라진 회차의 `choice_history` 는 seq 1 부터, 부모 것을 복사하지 않는다(R2) — 변화 없음.
+  - **통계의 "뿌리" 판정은 `forked_from_client_id IS NULL`** 이다. 핸드오프 D-d 의 `forked_from_id IS NULL` 은
+    부모가 아직 안 온 갈래를 뿌리로 잘못 센다. M5 의 지표는 갈래(줄)를 단위로 그대로 두고, "뿌리 수"가 필요한
+    자리(user_summary)에만 `forks` 를 하나 더 낸다.
+- 결과: V6 마이그레이션, `PlaythroughRepository` 에 findByClientId·insert(확장)·backfillChildren,
+  `PlaythroughSummary` 에 `clientPlaythroughId`·`forkedFrom{playthroughId, clientPlaythroughId, sceneIndex}`.
+
+---
+
+## D-021. 즐겨찾기는 유저 소유의 불투명 스냅샷 — 멱등 upsert, revision 없음, soft delete (핸드오프 R3·D-a·D-g·D-h)
+
+- 상태: **결정됨** (2026-09-02)
+- 배경: 세이브 슬롯의 자리를 즐겨찾기가 대신한다. 스스로 완결된 사본이라 출처 회차가 없어도 산다.
+- 결정:
+  - 테이블 `bookmarks(id, user_id FK, client_id VARCHAR(32), chapter_content_id FK, playthrough_id NULL FK,
+    playthrough_client_id VARCHAR(32) NULL, scene_index INT, label VARCHAR(100), preview VARCHAR(200),
+    snapshot JSON, created_at, updated_at, deleted_at NULL)` + `UNIQUE (user_id, client_id)`. **유저에 매단다**(D-a).
+  - `PUT /users/{uid}/bookmarks/{clientBookmarkId}` = 멱등 upsert(201 신규 / 200 갱신), 본문
+    `{label, preview, chapterId, chapterVersion, playthroughClientId?, sceneIndex, createdAt, snapshot}`.
+    `GET /users/{uid}/bookmarks` 는 **메타만**(스냅샷 없음 — save_slots 목록과 같은 결, F22). `DELETE` 는
+    soft(`deleted_at`) — 목록에서 빠지고 row 는 남는다(D-g). 같은 id 로 다시 PUT 하면 되살아난다.
+  - **revision·409 가 없다.** 낙관적 동시성은 누적되는 상태(seq 이력 + 스냅샷 계보)를 지키는 장치다.
+    즐겨찾기는 누적이 없는 사본이라 지킬 것이 label·preview 뿐이고, 그건 마지막 쓰기가 이기면 된다.
+  - `(chapterId, chapterVersion)` → `chapter_content_id` 는 세이브와 같은 404 규칙. 서버는 그 이상 판단하지
+    않는다 — 버전이 다른 즐겨찾기를 어떻게 로드할지는 클라의 일(D-h, D-017 의 결).
+  - `playthrough_id` 는 D-020 과 같은 방식 — client id 를 항상 적고 서버 id 는 해석되면 채운다.
+  - `/users/{uid}/…` 경로라 `AuthInterceptor.USERS_PATH` 의 본인 확인이 **그대로 적용된다** — 새 규칙이 필요 없다.
+- 결과: `bookmark/` 패키지 신설(Repository·Service·Controller·DTO 셋), DbCleaner·seed.sql 에 한 줄씩.
+
+---
+
+## D-022. 스냅샷·즐겨찾기 크기 상한 1MB → 413 (핸드오프 D-f)
+
+- 상태: **결정됨** (2026-09-02)
+- 배경: 백로그 300줄·장면 기록이 실리면서 스냅샷이 30~60KB 로 커졌다. JSON 컬럼은 여유 있지만 무한은 곤란하다.
+- 결정: 서비스 층에서 `writeValueAsString(snapshot)` 의 UTF-8 바이트가 **1,048,576 을 넘으면**
+  `PayloadTooLargeException` → 413 `PAYLOAD_TOO_LARGE`. 세이브 PUT 과 즐겨찾기 PUT 둘 다. 전송 층(Tomcat)이
+  아니라 서비스에서 재는 이유: Tomcat 은 JSON 본문에 상한을 두는 스위치가 없고, 스냅샷만 재는 것이 뜻에 맞다
+  (choices 배열이 큰 것은 다른 문제다). 클라는 백로그 300줄 상한으로 그 아래에 머문다.
+- 결과: 예외 클래스 하나, 핸들러 한 줄, 상수 하나(`SaveSlotService`·`BookmarkService` 공유), 테스트 둘.
+
+---
+
+## D-023. [제안 — 아미야 결정 대기] 409 의 기본 해소 = 갈라지기
+
+- 상태: **제안** (2026-09-02). Unity M8 Phase B 에서 결정.
+- 배경: M4·M8 계획의 409 해소는 "서버 것(폐기) vs 내 것(force)" 둘이었다. 둘 다 **한쪽의 이력을 버린다.**
+  새 모델은 "확정된 것은 되돌리지 않고 갈라진다"고 말한다 — 같은 회차를 두 기기가 다르게 이어 간 것이 곧 갈래다.
+- 제안: 409 `CONFLICT` 를 받은 클라는 **로컬 줄을 새 회차로 갈라**(`forkedFrom = {부모 client id, 마지막으로
+  서버와 같았던 장면}`) 그 회차로 미전송을 seq 1 부터 다시 올린다. 서버 회차는 그대로, 새 회차가 하나 생긴다.
+  아무것도 안 버린다. force 는 남겨 두되 기본 경로가 아니게 된다.
+- 서버 쪽 비용: **없다.** D-019·D-020 이 이미 그 경로를 받는다. 결정은 UI 의 것이라 Phase B 로 넘긴다.
+
+---
+
+## D-024. M8 을 두 단계로 다시 정의한다 — A: 서버 계약 확장, B: Unity F6 + 복구·충돌
+
+- 상태: **결정됨** (2026-09-02)
+- 배경: PLAN §4 M8 은 "Unity — 복구와 충돌 UI"였고 서버는 문서만 손대는 M 이었다. 핸드오프가 서버 작업
+  다섯(R1·R3·R4·D-f·D-d)을 요구하고, 그것이 Unity F6 의 선행이다.
+- 결정: **M8-A(서버, 이 레포)**: V6 마이그레이션·멱등 회차·갈래·즐겨찾기·목록 확장·413·통계 뿌리 판정 → 테스트
+  → `M8-check.md` 로 PowerShell 검증. **M8-B(Unity)**: F6 다섯 항목 + 복구·충돌 UI(D-023 포함). 완료 기준은
+  기존 "두 기기 시나리오"에 "갈라지기·즐겨찾기 왕복"이 더해진다. **PLAN.md 는 정본으로 유지**하고 해석은 이 항목이
+  맡는다(D-012 와 같은 어법). M9 의 선택 과제는 그대로다.
 
 ---
 
