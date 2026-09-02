@@ -19,6 +19,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.hamcrest.Matchers.startsWith;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -110,6 +111,18 @@ class PlaythroughApiTest {
     }
 
     @Test
+    void 본문_없는_옛_POST는_400이다() throws Exception {
+        // F6 전 Unity(ServerApi.CreatePlaythrough)는 본문도 Content-Type 도 없이 POST 한다 — 이 요청이 그 모양이다.
+        // Content-Type 이 없고 본문도 없으면 @RequestBody 는 "본문 없음"(HttpMessageNotReadable) → 400 MALFORMED_JSON 이다 (D-019, F47).
+        // PowerShell 5.1 은 같은 호출에 form Content-Type 을 몰래 붙여 415 를 받는다 — 클라가 무엇을 붙이느냐에 따라 코드가 갈리고,
+        // 어느 쪽이든 "F6 전 클라는 회차를 못 만든다"는 같다.
+        mockMvc.perform(post("/users/{userId}/playthroughs", userId).header("Authorization", bearer))
+                .andExpect(status().isBadRequest())
+                .andExpect(jsonPath("$.code").value("MALFORMED_JSON"));
+        assertThat(countPlaythroughs()).isZero();
+    }
+
+    @Test
     void 다른_사용자_밑으로는_회차를_만들_수_없다_403() throws Exception {
         // M6 이전에는 "없는 사용자 → 404"(서비스가 먼저 조회) 테스트였다. 이제 인터셉터가
         // 경로의 userId ≠ 토큰 userId 를 먼저 끊으므로 404 분기는 HTTP 로 닿을 수 없다 —
@@ -148,7 +161,7 @@ class PlaythroughApiTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(2))
                 .andExpect(jsonPath("$[0].clientPlaythroughId").value(A))
-                .andExpect(jsonPath("$[0].forkedFrom").doesNotExist())
+                .andExpect(jsonPath("$[0].forkedFrom").value(nullValue()))   // 새 게임 — null 로 온다 (키는 있다, F46)
                 .andExpect(jsonPath("$[1].clientPlaythroughId").value(B))
                 .andExpect(jsonPath("$[1].forkedFrom.playthroughId").value((int) parent))
                 .andExpect(jsonPath("$[1].forkedFrom.clientPlaythroughId").value(A))
@@ -165,7 +178,7 @@ class PlaythroughApiTest {
 
         mockMvc.perform(list())
                 .andExpect(jsonPath("$[0].forkedFrom.clientPlaythroughId").value(A))
-                .andExpect(jsonPath("$[0].forkedFrom.playthroughId").doesNotExist());   // 부모가 아직 서버에 없다
+                .andExpect(jsonPath("$[0].forkedFrom.playthroughId").value(nullValue()));   // 부모가 아직 서버에 없다
 
         // 부모가 도착하면 그 순간 자식 쪽이 되채워진다 — 자식은 다시 올라오지 않는다.
         long parent = createAndReadId(newGame(A), 201);
@@ -232,22 +245,24 @@ class PlaythroughApiTest {
                 .andExpect(jsonPath("$[0].playSeconds").value(120))
                 .andExpect(jsonPath("$[0].lastSavedAt").isNotEmpty())
                 .andExpect(jsonPath("$[0].startedAt").isNotEmpty())
-                .andExpect(jsonPath("$[0].endedAt").doesNotExist());   // 진행 중이면 null → 필드가 빠진다
+                .andExpect(jsonPath("$[0].endedAt").value(nullValue()));   // 진행 중이면 null
+        // (M2 부터 "null 이면 필드가 빠진다"고 적혀 있었지만 실측(F46)은 "키가 있고 값이 null" 이다.
+        //  jsonPath().doesNotExist() 는 null 도 통과시켜 그 오해가 테스트에 안 잡혔다 — 그래서 여기서는 nullValue() 로 못 박는다.)
     }
 
     @Test
     void 슬롯이_없는_회차는_챕터_필드가_비고_수는_0이다() throws Exception {
-        // LEFT JOIN 이라 회차는 남고 슬롯 쪽 값만 null 이다. 옛 회차(client_id 없음)도 목록에서 사라지지 않는다.
+        // LEFT JOIN 이라 회차는 남고 슬롯 쪽 값만 null 이다(키는 있다). 옛 회차(client_id 없음)도 목록에서 사라지지 않는다.
         Fixtures.insertPlaythrough(jdbc, userId);
 
         mockMvc.perform(list())
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$.length()").value(1))
-                .andExpect(jsonPath("$[0].clientPlaythroughId").doesNotExist())
+                .andExpect(jsonPath("$[0].clientPlaythroughId").value(nullValue()))
                 .andExpect(jsonPath("$[0].slotCount").value(0))
                 .andExpect(jsonPath("$[0].bookmarkCount").value(0))
-                .andExpect(jsonPath("$[0].chapterId").doesNotExist())
-                .andExpect(jsonPath("$[0].lastSavedAt").doesNotExist());
+                .andExpect(jsonPath("$[0].chapterId").value(nullValue()))
+                .andExpect(jsonPath("$[0].lastSavedAt").value(nullValue()));
     }
 
     @Test

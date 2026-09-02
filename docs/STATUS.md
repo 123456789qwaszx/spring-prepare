@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-09-02 — **M8-A 작성됨.** V6 + 32파일(코드 26·테스트 6), 테스트 97 → **115**. [M8-check.md](M8-check.md) §A 와 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md) 작성. **검증(아미야) 대기.** (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
+> 마지막 갱신: 2026-09-02 — **M8-A 검증됨** — 서버 테스트 115건 + [M8-check.md](M8-check.md) §1~§6 전부 통과. 실측이 문서를 고친 곳 둘(F46 null 은 키 있음, F47 본문 없는 POST 의 코드는 클라 헤더에 달림) → 테스트 116건으로 정정, **재실행 1회 + 커밋 대기.** 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -15,17 +15,18 @@
 | M5 | 조회와 집계 | **검증됨** (08-30) | [plans/M5.md](plans/M5.md) | [M5-check.md](M5-check.md) · [M5-explain.md](M5-explain.md) | 커밋 완료. V3 인덱스. 확인된 사실 F34~F38 |
 | M6 | 마감 | **검증됨** (08-31) | [plans/M6.md](plans/M6.md) | [M6-check.md](M6-check.md) | 커밋 완료. D-011~D-014. 확인된 사실 F39~F45. +잔손질 F44 핸들러(M7 착수 시, 작성됨) |
 | M7 | Unity 저장 포트 | **검증됨** (09-01) | [plans/M7.md](plans/M7.md) | [M7-check.md](M7-check.md) | Unity 레포 21파일. D-015~D-017. 검증 중 발견: `-InFile`·`gradlew.bat`·회차 필터 질의·bootRun 미종료 — 전부 검증 환경 쪽 |
-| M8 | **A** 서버 계약 확장(갈래·즐겨찾기) → **B** Unity F6·복구·충돌 | **A 작성됨** (09-02) | [plans/M8.md](plans/M8.md) | [M8-check.md](M8-check.md) §A | **D-024 재정의.** 입력 = [handoff/unity-2026-09-02.md](handoff/unity-2026-09-02.md), 답신 = [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). D-018~D-023. V6. 첫 `RowMapper` |
+| M8 | **A** 서버 계약 확장(갈래·즐겨찾기) → **B** Unity F6·복구·충돌 | **A 검증됨** (09-02, 커밋 대기) | [plans/M8.md](plans/M8.md) | [M8-check.md](M8-check.md) §A | **D-024 재정의.** 입력 = [handoff/unity-2026-09-02.md](handoff/unity-2026-09-02.md), 답신 = [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). D-018~D-023. V6. 첫 `RowMapper` |
 | M9 | 선택 과제 | 대기 | [plans/M9.md](plans/M9.md) | — | |
 
 ## 지금
 
 - 위치: **M8-A 작성됨** (2026-09-02). A-1~A-8 전부 코드로 반영 — `V6__forks_and_bookmarks.sql`, `playthrough/` 5파일(멱등 생성·갈래·
   되채우기·목록 확장), `bookmark/` 7파일 신설, `save/` 5파일(선택 필드 셋·413), `common/` 3파일(`SnapshotLimit`·413 핸들러),
-  `stats/` 2파일(`forks`), `DbCleaner`·`seed.sql`. 테스트 +18(97 → **115**). 스텁 javac 통과, 실행 검증은 아직.
+  `stats/` 2파일(`forks`), `DbCleaner`·`seed.sql`. 테스트 +18(97 → **115**) — **전부 PASSED** (09-02 22:41, `game_test` 에 V6 적용).
+  첫 시도는 gitignore 된 `application-test.properties` 가 사라져 있어 110건 컨텍스트 실패 — 코드가 아니라 환경(M8-check 함정 5).
 - **D-023(409 해소 = 갈라지기)은 여전히 아미야 결정 대기** — B 단계 몫.
-- 다음 (아미야): ① `.\gradlew.bat cleanTest test` → 115건 ([M8-check.md](M8-check.md) §0) → ② `bootRun` 으로 V6 적용 →
-  §1~§6 PowerShell 수동 절차 → ③ 결과를 §8 표에 → ④ 커밋 `feat(M8-A): …` (M7 의 `test(M7)` 이 아직이면 그것 먼저, 따로).
+- **검증 완료 (09-02 22:48)**: §0 115건, §1~§6 PowerShell 전부 기대대로. 실측 정정 둘 — F46·F47(M8-check §8). 정정에 따라 테스트 2파일을 고쳤다(116건).
+- 다음 (아미야): ① `.\gradlew.bat cleanTest test` → **116건** (정정된 두 테스트 파일 확인) → ② 커밋 `feat(M8-A): …` (M7 의 `test(M7)` 이 아직이면 그것 먼저, 따로).
   그 뒤 **B 로 인계** — 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md) 가 F6 계약의 정본이다.
 
 ## 점검 이력
@@ -52,6 +53,14 @@ M3 이후의 원칙("트랜잭션은 실패했을 때 증명된다")이 그대�
 고장이 아니라 예상된 상태라는 것을 check 문서가 먼저 말한다.
 
 **M8-B 로 넘어가는 것**: 답신 `handoff/server-2026-09-02.md` 가 F6 계약의 정본. D-023 결정. M9 소재 하나 추가(동시 POST 스레드 테스트).
+
+**수동 검증(같은 날 22:46~22:48)이 문서를 두 군데 고쳤다 — 코드는 한 줄도 안 고쳤다.**
+- F46: 응답의 null 은 키가 있고 값이 null. M2 의 "필드가 빠진다"는 `jsonPath().doesNotExist()` 가 null 도 통과시켜 두 M 동안 안 잡힌 오해였다.
+  매처가 관대하면 테스트는 "틀린 믿음과 같다"를 통과시킨다 — M5 의 "쿼리 결과를 기대값으로 베끼면 아무것도 안 지킨다"와 같은 계보.
+  와이어 형식은 안 바꿨다(결정 사항이지 정리가 아니다). 테스트의 그 자리들은 `nullValue()` 로 못 박았다.
+- F47: 본문 없는 POST — PowerShell 은 415, Unity·MockMvc(헤더 없음)는 400 `MALFORMED_JSON`. 415 를 보고 문서를 고쳤다가 테스트가 400 을 내서
+  되돌렸다: PS 5.1 이 `-Body` 없이도 form Content-Type 을 붙인다. M3·M6 에 이어 **세 번째 PS 5.1 함정** — 서버가 아니라 보내는 쪽의 기본값. D-019 의 400 은 Unity 기준으로 맞다.
+- 서버는 또 한 번 틀린 말을 하지 않았다(F45 계보) — 틀린 건 문서의 믿음이었고, 실물이 고쳤다.
 
 ### 2026-09-02 — 핸드오프 수령, M7 종료 후 M0~M9 9차 점검
 

@@ -3,7 +3,9 @@
 > PLAN §2.6. 결과는 §6 표에. 선행: M7 `검증됨`, D-018~D-022·D-024, 코드 A-1~A-8 (2026-09-02 반영, 32파일).
 > **이번 절의 무대는 서버 레포다.** Unity 는 열지 않는다 — B 절(두 기기·갈라지기·즐겨찾기 왕복)은 F6 뒤에 따로 쓴다.
 > 완료 기준(계획서 §7-A): 멱등 POST(둘 → 하나), 자식 먼저·부모 나중 → `forked_from_id` 닫힘, 즐겨찾기
-> PUT·GET(메타)·DELETE(soft)·재PUT(부활), 413 경계, 목록 팬아웃 없음, 테스트 전부 PASSED(97 + 18 = **115**).
+> PUT·GET(메타)·DELETE(soft)·재PUT(부활), 413 경계, 목록 팬아웃 없음, 테스트 전부 PASSED(97 + 19 = **116**).
+> **결과: §0~§6 전부 통과 (2026-09-02).** 실측이 문서를 고친 곳 둘 — F46(null 은 키가 있고 값이 null), F47(본문 없는 POST 의 코드는 클라가 붙이는 헤더에 달렸다). 아래 본문은 정정본이다.
+> 테스트는 정정 뒤 116건(`본문_없는_옛_POST는_400이다` 추가, null 단언을 `nullValue()` 로) — 재실행 1회 필요.
 
 **M7 에서 쌓인 검증 환경 함정 넷 — 이번에도 그대로 적용된다:**
 
@@ -12,9 +14,13 @@
    살아 있으면 `netstat -ano | findstr :8080` → `taskkill /PID <pid> /F`. 테스트(§0) 는 서버가 죽어 있어야 한다(포트가 아니라 DB 를 공유하므로 — `DbCleaner` 가 `game` 을 비운다).
 3. DB 질의는 **이번 사용자·회차로 거른다** — `game` 에는 seed(회차 20·선택 200)와 M2~M7 검증의 행이 남아 있다.
 4. 콘텐츠를 다시 수입할 일이 있으면 `-InFile` (재인코딩 금지, checksum).
+5. **(09-02 실측) `src/test/resources/application-test.properties` 는 gitignore 라 git 이 옮겨 주지 않는다.** 없으면 컨텍스트가
+   못 떠서 `Failed to determine suitable jdbc url` 로 110건이 한꺼번에 넘어지고 `ChecksumTest` 5건만 통과한다 — 코드 문제가 아니다.
+   `.example` 을 복사해 비밀번호만 채운다 (M6-check §0(b)). URL 은 반드시 `game_test`.
 
-**의도한 단절 하나 (D-019, C6)**: 이 코드가 뜬 서버에 **F6 전 Unity** 를 붙이면 회차 생성이 **400** 이다
-(`clientPlaythroughId` 필수). 고장이 아니라 B-1 이 붙기 전의 예상된 상태다. 지금 Unity 로 4번·5번을 누르지 않는다.
+**의도한 단절 하나 (D-019, C6)**: 이 코드가 뜬 서버에 **F6 전 Unity** 를 붙이면 회차 생성이 **400** `MALFORMED_JSON` 이다 — 옛 `ServerApi` 는
+본문도 `Content-Type` 도 없이 POST 하고, 서버는 그것을 "본문 없음"으로 본다. (PowerShell 로 같은 걸 흉내 내면 **415** 가 나온다 — PS 5.1 이 form
+Content-Type 을 몰래 붙이기 때문이다, F47.) 어느 쪽이든 고장이 아니라 B-1 이 붙기 전의 예상된 상태다. 지금 Unity 로 4번·5번을 누르지 않는다.
 
 창은 **터미널 ①**(bootRun), **터미널 ②**(PowerShell), **Workbench** 셋이다.
 
@@ -29,11 +35,11 @@ cd C:\Users\river\Documents\GitHub\spring-prepare
 .\gradlew.bat cleanTest test
 ```
 
-**115건 전부 PASSED** 기대 — M7 의 97건 + 신규 18건:
+**116건 전부 PASSED** 기대 — M7 의 97건 + 신규 19건:
 
 | 클래스 | 신규 | 무엇을 지키나 |
 |---|---|---|
-| `PlaythroughApiTest` | +7 (15) | 멱등 200, 형식 400 셋, 갈래 링크 즉시/되채우기, 요청의 서버 id 무시, 요약 forks, 목록 팬아웃 없음(2슬롯×3즐겨찾기 → 1행), 슬롯 없는 회차 |
+| `PlaythroughApiTest` | +8 (16) | 멱등 200, 형식 400 셋, **본문 없는 옛 POST 400**, 갈래 링크 즉시/되채우기, 요청의 서버 id 무시, 요약 forks, 목록 팬아웃 없음(2슬롯×3즐겨찾기 → 1행), 슬롯 없는 회차 |
 | `BookmarkApiTest` | +8 (신설) | 201→200, 메타 목록/단건 스냅샷/UTC, 출처 회차 순서 독립, soft delete·멱등·부활, 404, 400 셋, 403, 413 |
 | `SaveSlotApiTest` | +2 (14) | 시간 둘·완료 왕복 + 생략 시 0/false, **1,048,576 / +1** 경계 |
 | `SaveHistoryApiTest` | +1 (14) | 300 선택 + 이벤트 2 한 요청 → 다음 장면 이어 붙임 ("바뀌지 않는 것") |
@@ -82,7 +88,7 @@ Call-Api POST "$BASE/users/$USER_ID/playthroughs" "{""clientPlaythroughId"":""$A
 | 2.1 | 첫 응답 | **201**, `{"playthroughId":N,"clientPlaythroughId":"aaaa…"}` |
 | 2.2 | 둘째 응답 | **200**, 같은 `playthroughId` — 본문이 한 글자까지 같다 |
 | 2.3 | Workbench | `SELECT id, client_id, forked_from_id, forked_from_client_id FROM game.playthroughs WHERE user_id = <USER_ID>;` → **1행** |
-| 2.4 | 본문 없이 | `Call-Api POST "$BASE/users/$USER_ID/playthroughs" $null $AUTH` → **400** (F6 전 클라가 맞는 답, C6) |
+| 2.4 | 본문 없이 | `Call-Api POST "$BASE/users/$USER_ID/playthroughs" $null $AUTH` → **415** `UNSUPPORTED_MEDIA_TYPE`. **이건 PowerShell 의 답이다** — PS 5.1 이 form Content-Type 을 붙인다. Unity(헤더 없음)는 **400** `MALFORMED_JSON`, 테스트가 그쪽을 잰다(F47). 본문 `{}` 를 JSON 으로 보내면 400 `BAD_REQUEST` |
 
 첫 응답의 N 을 적어 둔다: `$PA = <N>`.
 
@@ -98,7 +104,7 @@ Call-Api POST "$BASE/users/$USER_ID/playthroughs" "{""clientPlaythroughId"":""$C
 |---|---|---|
 | 3.1 | 응답 | 201 — **모르는 부모라도 거절하지 않는다** (완결성 > 정확함, 계획서 §3-3) |
 | 3.2 | Workbench (2.3 질의) | `$C` 행: `forked_from_id` **NULL**, `forked_from_client_id` = bbbb… |
-| 3.3 | `Call-Api GET "$BASE/users/$USER_ID/playthroughs" $null $AUTH` | `$C` 의 `forkedFrom` 에 `clientPlaythroughId`·`sceneIndex` 만 있고 **`playthroughId` 가 없다** |
+| 3.3 | `Call-Api GET "$BASE/users/$USER_ID/playthroughs" $null $AUTH` | `$C` 의 `forkedFrom` 이 `{"playthroughId":null,"clientPlaythroughId":"bbbb…","sceneIndex":3}` — **`playthroughId` 가 null** (키는 있다, F46) |
 
 이제 부모가 도착한다:
 
@@ -109,13 +115,14 @@ Call-Api POST "$BASE/users/$USER_ID/playthroughs" "{""clientPlaythroughId"":""$B
 | # | 확인 | 기대 |
 |---|---|---|
 | 3.4 | Workbench (2.3 질의) | `$C` 행의 `forked_from_id` 가 **`$B` 의 id 로 닫혔다** — 자식은 다시 올라오지 않았다 |
-| 3.5 | 목록 GET | `$C.forkedFrom.playthroughId` 가 생겼다. `$A`·`$B` 는 `forkedFrom` 자체가 없다 |
+| 3.5 | 목록 GET | `$C.forkedFrom.playthroughId` 가 `$B` 의 id 다. `$A`·`$B` 는 `"forkedFrom":null` |
 | 3.6 | `Call-Api GET "$BASE/users/$USER_ID/summary" $null $AUTH` | `playthroughs: 3, forks: 1` (뿌리 2 = 3 − 1) |
 
 ## 4. 즐겨찾기 — PUT·GET·DELETE·재PUT (D-021)
 
 ```powershell
-$BM = "{""label"":""갈림길 앞"",""preview"":""왼쪽으로 갈까"",""chapterId"":""qwer"",""chapterVersion"":$CV,""playthroughClientId"":""$A"",""sceneIndex"":4,""createdAt"":""2026-09-02T21:00:00+09:00"",""snapshot"":{""sceneIndex"":4,""variables"":{""`$int"":7}}}"
+# 라벨은 일부러 ASCII 다 — PS 5.1 은 문자열 본문의 한글을 재인코딩해 깨뜨릴 수 있다(M3·M6 의 교훈). 한글 왕복은 BookmarkApiTest 가 이미 증명했다.
+$BM = "{""label"":""fork-ahead"",""preview"":""go left?"",""chapterId"":""qwer"",""chapterVersion"":$CV,""playthroughClientId"":""$A"",""sceneIndex"":4,""createdAt"":""2026-09-02T21:00:00+09:00"",""snapshot"":{""sceneIndex"":4,""variables"":{""`$int"":7}}}"
 Call-Api PUT "$BASE/users/$USER_ID/bookmarks/bm1" $BM $AUTH
 Call-Api PUT "$BASE/users/$USER_ID/bookmarks/bm1" $BM $AUTH
 Call-Api GET "$BASE/users/$USER_ID/bookmarks"     $null $AUTH
@@ -127,7 +134,7 @@ Call-Api GET "$BASE/users/$USER_ID/bookmarks/bm1" $null $AUTH
 | 4.1 | 첫 PUT | **201**, `{"clientBookmarkId":"bm1","playthroughId":<$PA>,"updatedAt":…}` — 출처 회차 `$A` 가 있으니 서버 id 가 바로 붙는다 |
 | 4.2 | 둘째 PUT | **200**, 같은 본문(updatedAt 만 다를 수 있음). Workbench `SELECT COUNT(*) FROM game.bookmarks WHERE user_id = <USER_ID>;` → 1 |
 | 4.3 | 목록 | 1건. `createdAt` 이 **`2026-09-02T12:00:00Z`** (+09:00 → UTC, D-009). **`snapshot` 키가 없다** |
-| 4.4 | 단건 | 같은 메타 + `snapshot` 이 보낸 그대로 (`{"sceneIndex":4,"variables":{"$int":7}}`) |
+| 4.4 | 단건 | 같은 메타 + `snapshot`. 키 순서·공백은 MySQL JSON 컬럼이 정규화해 바뀐다(`{"variables": {"$int": 7}, "sceneIndex": 4}`) — 바이트는 달라도 의미는 같다 (M1·M2 와 같은 관찰) |
 
 ```powershell
 Call-Api DELETE "$BASE/users/$USER_ID/bookmarks/bm1" $null $AUTH
@@ -176,7 +183,7 @@ Call-Api GET "$BASE/playthroughs/$PA/saves" $null $AUTH
 |---|---|---|
 | 6.1 | 회차 목록 | **3행** (`$A`·`$C`·`$B`, id 순) — 슬롯 2 × 즐겨찾기 2 로 곱해져 있지 않다 |
 | 6.2 | `$A` 행 | `slotCount: 2, bookmarkCount: 2, chapterId: "qwer", chapterVersion: $CV, currentEpisodeId: "EP02_01", chapterCompleted: true, inheritedPlaySeconds: 100, ownPlaySeconds: 20, playSeconds: 120, lastSavedAt` 있음 — 전부 **슬롯 1** 의 값 |
-| 6.3 | `$B`·`$C` 행 | `slotCount: 0, bookmarkCount: 0`, `chapterId` 이하 **키 없음**(슬롯이 없다), `lastSavedAt` 없음 |
+| 6.3 | `$B`·`$C` 행 | `slotCount: 0, bookmarkCount: 0`, `chapterId` 이하 전부 **null**(슬롯이 없다), `lastSavedAt` null |
 | 6.4 | 슬롯 목록 | 슬롯 2 는 `inheritedPlaySeconds: 0, ownPlaySeconds: 0, chapterCompleted: false` — 안 보낸 값은 0/false (A-4, F6 전 호환) |
 
 ## 7. 이 문서가 검증하지 않는 것
@@ -190,12 +197,24 @@ Call-Api GET "$BASE/playthroughs/$PA/saves" $null $AUTH
 
 | 절 | 결과 | 비고 |
 |---|---|---|
-| §0 서버 테스트 115건 | | |
-| §2 멱등 회차 | | |
-| §3 갈래 되채우기 | | |
-| §4 즐겨찾기 | | |
-| §5 413 | | |
-| §6 목록 팬아웃 | | |
+| §0 서버 테스트 | **통과** (09-02) | 115건 전부 PASSED, `BUILD SUCCESSFUL in 13s`. 첫 시도는 `application-test.properties` 부재로 110건 컨텍스트 실패(함정 5) — 파일 복구 후 통과. Flyway V6 가 `game_test` 에 적용됨. **정정 뒤 116건 재실행: (기록 대기)** |
+| §2 멱등 회차 | **통과** (09-02) | 사용자 m8(id 8). POST 둘 → 201 `playthroughId 32` / 200 같은 본문. Workbench 1행, 갈래 열 NULL. 본문 없는 POST 는 PowerShell 에서 415 — 클라 헤더 차이(F47) |
+| §3 갈래 되채우기 | **통과** (09-02) | 자식 33(`forkedFrom.playthroughId: null`) → 부모 34 도착 → 목록에서 `forkedFrom.playthroughId: 34`. summary `playthroughs 3, forks 1` |
+| §4 즐겨찾기 | **통과** (09-02) | 201 → 200 같은 본문(`playthroughId 32` 즉시), 목록 `createdAt 12:00:00Z`·snapshot 없음, 단건 snapshot(MySQL 정규화), DELETE 204·204, GET 404, 재PUT 200, 남의 것 403, v99 404 |
+| §5 413 | **통과** (09-02) | 즐겨찾기·세이브 둘 다 `1100011 bytes > 1048576` |
+| §6 목록 팬아웃 | **통과** (09-02) | 회차 3행(32·33·34). 32: `slotCount 2, bookmarkCount 2`, 슬롯 1 값 전부. 슬롯 2: `0/0/false` |
+
+**실측이 고친 것 — 확인된 사실 F46·F47** (M6 의 F39~F45 에 잇는 번호):
+
+- **F46. Jackson 은 null 을 키로 내보낸다** — `"forkedFrom":null`, `"chapterId":null`. M2 부터 "null 이면 필드가 빠진다"고 적혀 있었는데
+  실물은 키가 있고 값이 null 이었다. 못 잡은 이유: Spring 의 `jsonPath(…).doesNotExist()` 는 **null 도 통과시킨다**. 매처의 관대함이
+  두 M 동안 오해를 덮었다. 조치: 계약 문서(답신 §1.4)를 "null" 로 정정, 테스트의 그 자리들을 `value(nullValue())` 로 못 박음. 와이어
+  형식은 바꾸지 않았다 — Unity 는 Newtonsoft 라 null 과 부재를 같게 읽고, M2 부터 이 모양으로 나가고 있었다.
+- **F47. 본문 없는 POST 의 코드는 클라가 붙이는 헤더에 달렸다.** Content-Type 도 본문도 없으면(UnityWebRequest, MockMvc) `@RequestBody` 는
+  "본문 없음" → **400** `MALFORMED_JSON`. PowerShell 5.1 은 `-Body` 가 없어도 `application/x-www-form-urlencoded` 를 붙이므로 같은 호출이
+  **415** 가 된다. 처음 실측한 415 를 보고 "400 → 415" 로 고쳤다가, 테스트(MockMvc = Unity 와 같은 모양)가 400 을 내서 되돌렸다 —
+  **틀린 건 서버가 아니라 보내는 쪽의 기본값이었다**(M3·M6 의 PS 5.1 교훈, 세 번째). D-019 의 "F6 전 클라는 400" 은 Unity 기준으로 맞다.
+  테스트 `본문_없는_옛_POST는_400이다` 가 Unity 모양을 잰다.
 
 ## 9. 커밋
 

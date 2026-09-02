@@ -401,6 +401,8 @@ Connector/J 9.7.0 개발자 가이드 "Preserving Time Instants":
     새로 만들면 201 — M1 의 "같은 파일 재수입은 200"(D-007)과 같은 어법이다.
   - `clientPlaythroughId` 는 **필수**(없으면 400). 선택으로 두면 "안 보낸 요청은 멱등이 아니다"가 되어 M4 의
     optional baseRevision 이 그랬을 것과 같은 있으나 마나가 된다. 지금 도는 클라(F6 전)는 이 400 을 맞는다 —
+    (실측 09-02, F47: Unity 처럼 본문·Content-Type 없이 보내면 400 `MALFORMED_JSON`(본문 없음), 빈 JSON `{}` 이면 400 `BAD_REQUEST`.
+    PowerShell 5.1 은 form Content-Type 을 몰래 붙여 415 가 된다 — 클라 헤더 차이이지 서버 규칙 차이가 아니다.) —
     **의도한 호환 단절**이고(M6 과 같은 종류), F6 이 곧바로 채운다.
   - 컬럼이 NULL 허용인 이유는 seed 와 M0~M7 의 기존 회차가 id 없이 남기 때문이다. UNIQUE 는 NULL 을 여럿 허용한다.
 - 판단 근거: 멱등 키는 요청 UUID 가 아니라 **자원의 클라 측 신원**이어야 한다(D-010 이 choices 를 키로 고른

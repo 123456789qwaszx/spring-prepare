@@ -20,6 +20,7 @@ import tools.jackson.databind.ObjectMapper;
 import java.nio.charset.StandardCharsets;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.hamcrest.Matchers.nullValue;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.delete;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
@@ -133,7 +134,7 @@ class BookmarkApiTest {
         // 회차 PT 는 아직 서버에 없다 — 즐겨찾기가 먼저 왔다. 클라 id 만 들고 기다린다.
         mockMvc.perform(putBookmark("b1", body("먼저", 4)))
                 .andExpect(status().isCreated())
-                .andExpect(jsonPath("$.playthroughId").doesNotExist());
+                .andExpect(jsonPath("$.playthroughId").value(nullValue()));   // 키는 있고 null (F46)
         assertThat(playthroughIdOf("b1")).isNull();
 
         // 회차가 도착한다 → 그 순간 즐겨찾기 쪽이 되채워진다.
