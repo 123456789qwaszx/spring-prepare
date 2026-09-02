@@ -59,6 +59,19 @@ public class StatsService {
         return statsRepository.choiceRatio(chapterId, resolved);
     }
 
+    /** 버전 해석은 choiceRatio 와 같다(생략 = 최신). 없는 버전은 0행이라 404 로 가른다 — 빈 카드는 조용히 틀린 답이다. */
+    @Transactional(readOnly = true)
+    public ChapterOverview chapterOverview(String chapterId, Integer version) {
+        int resolved = (version != null)
+                ? version
+                : chapterContentRepository.findLatestVersion(chapterId)
+                        .orElseThrow(() -> new NotFoundException("챕터가 없습니다: " + chapterId));
+
+        return statsRepository.chapterOverview(chapterId, resolved)
+                .orElseThrow(() -> new NotFoundException(
+                        "콘텐츠 버전이 없습니다: " + chapterId + " v" + resolved));
+    }
+
     @Transactional(readOnly = true)
     public UserSummary userSummary(long userId) {
         return statsRepository.userSummary(userId)

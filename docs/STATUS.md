@@ -1,6 +1,6 @@
 # 상태 보드
 
-> 마지막 갱신: 2026-09-02 — **M8-A 검증됨** — 서버 테스트 115건 + [M8-check.md](M8-check.md) §1~§6 전부 통과. 실측이 문서를 고친 곳 둘(F46 null 은 키 있음, F47 본문 없는 POST 의 코드는 클라 헤더에 달림) → 테스트 116건으로 정정, **재실행 1회 + 커밋 대기.** 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
+> 마지막 갱신: 2026-09-02 — **M9 작성됨** (D-027 로 마감 M 재정의: 관리자 화면 `admin.html` + 챕터 개요 엔드포인트 + D-025 `ended_at` 결정 + [RETRO.md](RETRO.md)). 테스트 116 → **120**. [M9-check.md](M9-check.md) 실행·커밋 대기. M8-B(Unity) 는 검토 완료·검증 대기(독립). 핸드오프 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). (같은 날 앞서: M7 검증됨, 핸드오프 수령, M8 재정의 D-024.)
 > 상태 값: `대기` · `진행 중` · `작성됨`(파일 반영, 실행 검증 전) · `검증됨`(완료 기준 통과) · `보류`
 
 ## 마일스톤
@@ -15,21 +15,33 @@
 | M5 | 조회와 집계 | **검증됨** (08-30) | [plans/M5.md](plans/M5.md) | [M5-check.md](M5-check.md) · [M5-explain.md](M5-explain.md) | 커밋 완료. V3 인덱스. 확인된 사실 F34~F38 |
 | M6 | 마감 | **검증됨** (08-31) | [plans/M6.md](plans/M6.md) | [M6-check.md](M6-check.md) | 커밋 완료. D-011~D-014. 확인된 사실 F39~F45. +잔손질 F44 핸들러(M7 착수 시, 작성됨) |
 | M7 | Unity 저장 포트 | **검증됨** (09-01) | [plans/M7.md](plans/M7.md) | [M7-check.md](M7-check.md) | Unity 레포 21파일. D-015~D-017. 검증 중 발견: `-InFile`·`gradlew.bat`·회차 필터 질의·bootRun 미종료 — 전부 검증 환경 쪽 |
-| M8 | **A** 서버 계약 확장(갈래·즐겨찾기) → **B** Unity F6·복구·충돌 | **A 검증됨** (09-02, 커밋 대기) | [plans/M8.md](plans/M8.md) | [M8-check.md](M8-check.md) §A | **D-024 재정의.** 입력 = [handoff/unity-2026-09-02.md](handoff/unity-2026-09-02.md), 답신 = [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). D-018~D-023. V6. 첫 `RowMapper` |
-| M9 | 선택 과제 | 대기 | [plans/M9.md](plans/M9.md) | — | |
+| M8 | **A** 서버 계약 확장(갈래·즐겨찾기) → **B** Unity F6·복구·충돌 | **A 검증됨·커밋** (09-02) / **B 작성됨** (09-02) | [plans/M8.md](plans/M8.md) | [M8-check.md](M8-check.md) §A | **D-024 재정의.** 입력 = [handoff/unity-2026-09-02.md](handoff/unity-2026-09-02.md), 답신 = [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md). D-018~D-023. V6. 첫 `RowMapper` |
+| M9 | **마감** — 관리자 화면 · `ended_at` · 회고 (+JPA 조각 선택) | **작성됨** (09-02) | [plans/M9.md](plans/M9.md) | [M9-check.md](M9-check.md) | **D-025~D-027.** `static/admin.html`, `GET /stats/chapters/{id}/overview`, `completedPlaythroughs`, [RETRO.md](RETRO.md). 테스트 120 |
 
 ## 지금
 
-- 위치: **M8-A 작성됨** (2026-09-02). A-1~A-8 전부 코드로 반영 — `V6__forks_and_bookmarks.sql`, `playthrough/` 5파일(멱등 생성·갈래·
-  되채우기·목록 확장), `bookmark/` 7파일 신설, `save/` 5파일(선택 필드 셋·413), `common/` 3파일(`SnapshotLimit`·413 핸들러),
-  `stats/` 2파일(`forks`), `DbCleaner`·`seed.sql`. 테스트 +18(97 → **115**) — **전부 PASSED** (09-02 22:41, `game_test` 에 V6 적용).
-  첫 시도는 gitignore 된 `application-test.properties` 가 사라져 있어 110건 컨텍스트 실패 — 코드가 아니라 환경(M8-check 함정 5).
-- **D-023(409 해소 = 갈라지기)은 여전히 아미야 결정 대기** — B 단계 몫.
-- **검증 완료 (09-02 22:48)**: §0 115건, §1~§6 PowerShell 전부 기대대로. 실측 정정 둘 — F46·F47(M8-check §8). 정정에 따라 테스트 2파일을 고쳤다(116건).
-- 다음 (아미야): ① `.\gradlew.bat cleanTest test` → **116건** (정정된 두 테스트 파일 확인) → ② 커밋 `feat(M8-A): …` (M7 의 `test(M7)` 이 아직이면 그것 먼저, 따로).
-  그 뒤 **B 로 인계** — 답신 [handoff/server-2026-09-02.md](handoff/server-2026-09-02.md) 가 F6 계약의 정본이다.
+- 위치: **M9 작성됨** (2026-09-02 밤). D-027 로 M9 = 마감. 들어간 것:
+  - **M9-1 관리자 화면** `static/admin.html` — 키 한 번(sessionStorage), 챕터·버전 선택(공개 GET), 개요 카드 5, 선택 비율(막대), 이벤트 도달률. 숫자는 전부 서버가 만든다.
+  - **챕터 개요 엔드포인트** `GET /stats/chapters/{id}/overview?version=` (`chapter_overview.sql`, `ChapterOverview`) + 요약 `completedPlaythroughs`. 테스트 +4 → **120**.
+  - **D-025** 끝낸 회차 = `chapter_completed`(`ended_at` 은 유산 표시), **D-026** 에피소드 id 안정 규칙(마이그레이션 API 폐기), **D-027** M9 재정의(JPA 는 한 조각 대조로, 선택).
+  - **RETRO.md** — M 별 믿었다/틀렸다/고쳤다, 관통 교훈 여섯, 숫자, 다음에 다르게 할 것, 면접 세 문장.
+- M8-B(Unity): 검토서 §2 둘 반영 → `m8b-check.md` 실행 → 답신 → 커밋. D-023 명시적 결정 한 줄 대기. M9 와 독립.
+- 다음 (아미야): ① `.\gradlew.bat cleanTest test` → **120건** → ② `bootRun` + `http://localhost:8080/admin.html` 을 seed 로 대조(M9-check §1) → ③ 커밋 `feat(M9): …` → **실습3 종료.** ④ (선택) M9-4 JPA 조각 — plans/M9.md §6.
 
 ## 점검 이력
+
+### 2026-09-02 (밤) — M9 작성, 11차 점검 = 마감 점검
+
+**M9 의 세 과제 중 하나만 살아남았다.** 마이그레이션 API 는 "문제가 다른 자리에 있다"(PUT 이 이미 버전을 옮긴다; 진짜 구멍은 에피소드 id 변경 →
+큐가 400 에 영영 갇힘 — 규칙 + 클라 한 분기로 푼다, D-026). JPA 통째 재구현은 같은 것을 두 번 짜는 비용 대비 남는 것이 없다 — M4 의 기준선(F30)에
+`@Version` 을 붙여 SQL 을 대조하는 한 조각으로 줄였다(D-027 §M9-4, 선택). 관리자 화면은 서버 학습 가치가 낮다고 초안이 적었지만, **"끝낸 회차"의
+정의(D-025)를 강제한 것**이 화면의 값이었다 — 정의 없는 숫자는 만들지 않는다는 M5 규칙이 M9 에서 한 번 더 작동했다.
+
+**`ended_at` 은 M7 에서 이미 죽었는데 M9 에서야 표시했다.** 클라가 end 를 부르지 않는다는 것은 M7 코드에서 확정된 사실이었고, 통계의 "종료 회차"
+논의는 그 뒤로 seed 에서만 성립하고 있었다. 회고 §5 "죽은 개념은 생기는 순간 표시한다"가 여기서 나왔다.
+
+**전체 재점검 결과**: M0~M8 의 전제 중 M9 가 뒤집은 것은 없다. `ended_at`·end API·`endedPlaythroughs` 는 지우지 않고 남긴다(테스트 8건·M2 계약 보존,
+지우는 비용 > 두는 비용). 이벤트 도달률 분모는 그대로 전체 회차. 프로젝트는 M9-check 통과 + 커밋으로 닫힌다.
 
 ### 2026-09-02 (같은 날, 뒤) — M8-A 작성 후 10차 점검
 

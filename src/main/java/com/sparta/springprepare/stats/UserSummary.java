@@ -18,6 +18,7 @@ public record UserSummary(
         String username,
         long playthroughs,
         long forks,
+        long completedPlaythroughs,
         long endedPlaythroughs,
         long saveSlots,
         long choices,

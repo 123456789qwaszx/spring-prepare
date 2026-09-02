@@ -42,6 +42,13 @@ public class StatsController {
         return service.choiceRatio(chapterId, version);
     }
 
+    /** 챕터 개요 — 완주율이 첫 숫자다 (M9-1). 관리자 키. */
+    @GetMapping("/stats/chapters/{chapterId}/overview")
+    public ChapterOverview overview(@PathVariable String chapterId,
+                                    @RequestParam(required = false) Integer version) {
+        return service.chapterOverview(chapterId, version);
+    }
+
     @GetMapping("/users/{userId}/summary")
     public UserSummary userSummary(@PathVariable long userId) {
         return service.userSummary(userId);

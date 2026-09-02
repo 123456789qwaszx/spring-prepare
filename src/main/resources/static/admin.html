@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ked 통계</title>
+<!--
+  관리자 통계 화면 (M9-1). 서버 API 세 개(/stats/**)를 그대로 그린다 — 화면은 Unity 와 같은 종류의 클라이언트다.
+  숫자를 여기서 계산하지 않는다. 계산은 SQL 이 하고(sql/stats/*.sql), 검산은 StatsApiTest 가 seed 로 한다.
+  관리자 키는 파일에 없다 — 한 번 입력받아 sessionStorage 에만 둔다(탭을 닫으면 사라진다).
+  외부 스크립트 없음. 같은 8080 에서 뜨므로 CORS 도 없다.
+-->
+<style>
+  :root { --ink:#1f2328; --mute:#6b7280; --line:#e5e7eb; --bg:#f6f7f9; --card:#fff; --bar:#3b6fd6; --bar2:#c9d6f2; --warn:#b42318; }
+  * { box-sizing:border-box; }
+  body { margin:0; font:14px/1.5 -apple-system,"Segoe UI","Noto Sans KR",sans-serif; color:var(--ink); background:var(--bg); }
+  header { display:flex; align-items:center; gap:12px; padding:12px 20px; background:var(--card); border-bottom:1px solid var(--line); flex-wrap:wrap; }
+  header h1 { font-size:16px; margin:0 16px 0 0; }
+  header label { color:var(--mute); }
+  input, select, button { font:inherit; padding:6px 8px; border:1px solid var(--line); border-radius:6px; background:#fff; }
+  button { cursor:pointer; }
+  button.primary { background:var(--ink); color:#fff; border-color:var(--ink); }
+  main { max-width:1080px; margin:20px auto; padding:0 20px; display:grid; gap:16px; }
+  section { background:var(--card); border:1px solid var(--line); border-radius:10px; padding:16px 20px; }
+  section h2 { font-size:14px; margin:0 0 12px; color:var(--mute); font-weight:600; }
+  .cards { display:grid; grid-template-columns:repeat(auto-fit, minmax(150px,1fr)); gap:12px; }
+  .card { padding:12px 14px; border:1px solid var(--line); border-radius:8px; }
+  .card .v { font-size:26px; font-weight:700; line-height:1.2; }
+  .card .k { color:var(--mute); font-size:12px; margin-top:4px; }
+  table { width:100%; border-collapse:collapse; }
+  th, td { text-align:left; padding:6px 8px; border-bottom:1px solid var(--line); vertical-align:middle; }
+  th { color:var(--mute); font-weight:600; font-size:12px; }
+  td.num, th.num { text-align:right; font-variant-numeric:tabular-nums; }
+  tr.ep td { background:var(--bg); font-weight:600; }
+  .bar { position:relative; height:14px; background:var(--bar2); border-radius:3px; min-width:120px; }
+  .bar > i { position:absolute; left:0; top:0; bottom:0; background:var(--bar); border-radius:3px; }
+  .msg { color:var(--mute); }
+  .err { color:var(--warn); }
+  .muted { color:var(--mute); }
+  footer { max-width:1080px; margin:0 auto 30px; padding:0 20px; color:var(--mute); font-size:12px; }
+</style>
+</head>
+<body>
+<header>
+  <h1>ked 통계</h1>
+  <label for="key">관리자 키</label>
+  <input id="key" type="password" size="28" placeholder="X-Admin-Key">
+  <button id="apply" class="primary">적용</button>
+  <label for="chapter">챕터</label>
+  <select id="chapter"></select>
+  <label for="version">버전</label>
+  <select id="version"></select>
+  <span id="status" class="msg"></span>
+</header>
+
+<main>
+  <section>
+    <h2>챕터 개요 — <span id="ovTitle" class="muted">챕터를 고르면</span></h2>
+    <div class="cards" id="overview"></div>
+  </section>
+
+  <section>
+    <h2>선택 비율 — 에피소드마다 100%</h2>
+    <table id="choices">
+      <thead><tr><th>에피소드</th><th>선택지</th><th class="num">횟수</th><th class="num">비율</th><th></th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+
+  <section>
+    <h2>이벤트 도달률 — 분모는 전체 회차</h2>
+    <table id="events">
+      <thead><tr><th>이벤트</th><th class="num">도달 회차</th><th class="num">전체 회차</th><th class="num">도달률</th><th></th><th>처음</th><th>마지막</th></tr></thead>
+      <tbody></tbody>
+    </table>
+  </section>
+</main>
+
+<footer>
+  숫자의 정의는 <code>sql/stats/*.sql</code> 머리 주석에 있다. 완주 = 슬롯 1 의 <code>chapter_completed</code>(D-025). 도달률 분모 = 전체 회차(M5).
+</footer>
+
+<script>
+(() => {
+  const $ = (id) => document.getElementById(id);
+  const status = $('status');
+
+  // ── 키 — 파일에 없다. 입력 한 번, 탭이 살아 있는 동안만.
+  const KEY = 'ked.adminKey';
+  const key = () => sessionStorage.getItem(KEY) || '';
+  $('key').value = key();
+  $('apply').onclick = () => { sessionStorage.setItem(KEY, $('key').value.trim()); boot(); };
+  $('key').addEventListener('keydown', (e) => { if (e.key === 'Enter') $('apply').click(); });
+
+  // ── 호출 — 상태 코드와 서버 에러 형식(code·message)을 그대로 보인다. 화면이 해석하지 않는다.
+  async function api(path, admin) {
+    const headers = admin ? { 'X-Admin-Key': key() } : {};
+    const r = await fetch(path, { headers });
+    if (r.ok) return r.json();
+    let detail = '';
+    try { const e = await r.json(); detail = e.code ? ` ${e.code} — ${e.message || ''}` : ''; } catch (_) {}
+    throw new Error(`HTTP ${r.status}${detail}`);
+  }
+  const say = (text, isErr) => { status.textContent = text || ''; status.className = isErr ? 'err' : 'msg'; };
+  const fmtTime = (iso) => iso ? iso.replace('T', ' ').replace('Z', ' UTC') : '';
+  const pct = (v) => (v == null ? '–' : v.toFixed(1) + '%');
+  const bar = (v) => `<div class="bar"><i style="width:${Math.max(0, Math.min(100, v || 0))}%"></i></div>`;
+
+  // ── 챕터·버전 — 공개 GET. 키 없이도 채워진다.
+  async function loadChapters() {
+    const list = await api('/content/chapters', false);
+    const sel = $('chapter');
+    sel.innerHTML = list.map(c => `<option value="${c.chapterId}">${c.chapterId} — ${c.displayName ?? ''} (최신 v${c.latestVersion})</option>`).join('');
+    if (list.length === 0) { $('ovTitle').textContent = '수입된 챕터가 없다'; return; }
+    await loadVersions();
+  }
+  async function loadVersions() {
+    const id = $('chapter').value;
+    const versions = await api(`/content/chapters/${encodeURIComponent(id)}/versions`, false);
+    const sel = $('version');
+    // 최신이 앞에 오게.
+    versions.sort((a, b) => b.version - a.version);
+    sel.innerHTML = versions.map(v => `<option value="${v.version}">v${v.version} · ${fmtTime(v.importedAt)}</option>`).join('');
+    await loadChapterStats();
+  }
+  $('chapter').onchange = () => loadVersions().catch(fail);
+  $('version').onchange = () => loadChapterStats().catch(fail);
+
+  // ── 챕터 개요 + 선택 비율 — 관리자 키.
+  async function loadChapterStats() {
+    const id = $('chapter').value, v = $('version').value;
+    if (!id) return;
+    $('ovTitle').textContent = `${id} v${v}`;
+
+    const ov = await api(`/stats/chapters/${encodeURIComponent(id)}/overview?version=${v}`, true);
+    $('overview').innerHTML = [
+      [ov.playthroughs, '회차'],
+      [ov.completed, '끝낸 회차'],
+      [pct(ov.completionRate), '완주율'],
+      [ov.forks, '갈래'],
+      [ov.bookmarks, '즐겨찾기'],
+    ].map(([val, k]) => `<div class="card"><div class="v">${val}</div><div class="k">${k}</div></div>`).join('');
+
+    const rows = await api(`/stats/chapters/${encodeURIComponent(id)}/choices?version=${v}`, true);
+    const body = $('choices').querySelector('tbody');
+    if (rows.length === 0) { body.innerHTML = '<tr><td colspan="5" class="muted">아직 선택이 없다</td></tr>'; return; }
+    let html = '', lastEp = null;
+    for (const r of rows) {
+      if (r.episodeId !== lastEp) {
+        html += `<tr class="ep"><td colspan="5">${r.episodeId} <span class="muted">${r.episodeTitle ?? ''}</span></td></tr>`;
+        lastEp = r.episodeId;
+      }
+      html += `<tr><td class="muted">#${r.optionIndex}</td><td>${r.choiceLabel ?? '<span class="muted">(라벨 없음)</span>'}</td>` +
+              `<td class="num">${r.picks}</td><td class="num">${pct(r.pickRate)}</td><td>${bar(r.pickRate)}</td></tr>`;
+    }
+    body.innerHTML = html;
+  }
+
+  // ── 이벤트 도달률 — 챕터와 무관(이벤트 키는 전역).
+  async function loadEvents() {
+    const rows = await api('/stats/events', true);
+    const body = $('events').querySelector('tbody');
+    if (rows.length === 0) { body.innerHTML = '<tr><td colspan="7" class="muted">아직 이벤트가 없다</td></tr>'; return; }
+    body.innerHTML = rows.map(r =>
+      `<tr><td>${r.eventKey}</td><td class="num">${r.reachedPlaythroughs}</td><td class="num">${r.totalPlaythroughs}</td>` +
+      `<td class="num">${pct(r.reachRate)}</td><td>${bar(r.reachRate)}</td>` +
+      `<td class="muted">${fmtTime(r.firstOccurredAt)}</td><td class="muted">${fmtTime(r.lastOccurredAt)}</td></tr>`).join('');
+  }
+
+  function fail(err) {
+    // 401 이면 키가 틀렸거나 없는 것 — 서버의 code 가 그대로 보인다.
+    say(err.message + (err.message.includes('401') ? ' — 관리자 키를 확인' : ''), true);
+  }
+
+  async function boot() {
+    say('불러오는 중…');
+    try {
+      await loadChapters();
+      await loadEvents();
+      say(key() ? '' : '관리자 키를 넣고 적용', !key());
+    } catch (err) { fail(err); }
+  }
+
+  boot();
+})();
+</script>
+</body>
+</html>

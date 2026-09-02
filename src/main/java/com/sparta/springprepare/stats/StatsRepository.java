@@ -39,12 +39,14 @@ public class StatsRepository {
     private final String eventReachSql;
     private final String choiceRatioSql;
     private final String userSummarySql;
+    private final String chapterOverviewSql;
 
     public StatsRepository(JdbcClient jdbc) {
         this.jdbc = jdbc;
         this.eventReachSql = load("sql/stats/event_reach.sql");
         this.choiceRatioSql = load("sql/stats/choice_ratio.sql");
         this.userSummarySql = load("sql/stats/user_summary.sql");
+        this.chapterOverviewSql = load("sql/stats/chapter_overview.sql");
     }
 
     private static String load(String path) {
@@ -72,6 +74,14 @@ public class StatsRepository {
     }
 
     /** 사용자가 없으면 0행이다 (WHERE u.id = :userId). 서비스가 404 로 번역한다. */
+    public Optional<ChapterOverview> chapterOverview(String chapterId, int version) {
+        return jdbc.sql(chapterOverviewSql)
+                .param("chapterId", chapterId)
+                .param("version", version)
+                .query(ChapterOverview.class)
+                .optional();
+    }
+
     public Optional<UserSummary> userSummary(long userId) {
         return jdbc.sql(userSummarySql)
                 .param("userId", userId)

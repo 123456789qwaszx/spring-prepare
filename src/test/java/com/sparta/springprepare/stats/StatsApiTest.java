@@ -171,6 +171,7 @@ class StatsApiTest {
                 .andExpect(jsonPath("$.username").value("amiya"))
                 .andExpect(jsonPath("$.playthroughs").value(4))
                 .andExpect(jsonPath("$.forks").value(0))            // seed 회차는 전부 뿌리다 (M8-A, D-020). 갈래가 세어지는 쪽은 PlaythroughApiTest
+                .andExpect(jsonPath("$.completedPlaythroughs").value(0))   // seed 슬롯은 chapter_completed 가 없다 (M9-1, D-025). 세어지는 쪽은 ChapterOverviewApiTest
                 .andExpect(jsonPath("$.endedPlaythroughs").value(4))
                 .andExpect(jsonPath("$.saveSlots").value(4))
                 .andExpect(jsonPath("$.choices").value(40))
@@ -204,6 +205,30 @@ class StatsApiTest {
     }
 
     // ── M6: 보호 자체의 확인 ─────────────────────────────────────────
+
+    // ── 챕터 개요 (M9-1) ──────────────────────────────────────────
+
+    @Test
+    void 챕터_개요는_seed에서_스무_회차_완주_0이다() throws Exception {
+        // 회차 20 = 슬롯 1 이 qwer v1 을 가리키는 회차 전부. 슬롯 2 가 있는 회차 11~20 이 두 번 세어지면 30 이 나온다 — 팬아웃.
+        // completed 0 = seed 는 chapter_completed 를 넣지 않는다. 0/20 은 NULL 이 아니라 0.0 이어야 한다.
+        mockMvc.perform(get("/stats/chapters/{chapterId}/overview", "qwer").header("X-Admin-Key", adminKey))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.chapterId").value("qwer"))
+                .andExpect(jsonPath("$.version").value(1))          // 생략 = 최신. seed 는 v1 뿐
+                .andExpect(jsonPath("$.playthroughs").value(20))
+                .andExpect(jsonPath("$.completed").value(0))
+                .andExpect(jsonPath("$.completionRate").value(0.0))
+                .andExpect(jsonPath("$.forks").value(0))
+                .andExpect(jsonPath("$.bookmarks").value(0));
+
+        mockMvc.perform(get("/stats/chapters/{chapterId}/overview", "qwer")
+                        .header("X-Admin-Key", adminKey).param("version", "99"))
+                .andExpect(status().isNotFound());
+
+        mockMvc.perform(get("/stats/chapters/{chapterId}/overview", "qwer"))
+                .andExpect(status().isUnauthorized());
+    }
 
     @Test
     void 관리자_키_없이_stats는_401이다() throws Exception {
